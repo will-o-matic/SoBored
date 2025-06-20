@@ -4,6 +4,8 @@ A smart event aggregator and assistant that helps surface interesting things to 
 
 ---
 
+
+
 ## Tech Stack
 
 | Layer | Technology |

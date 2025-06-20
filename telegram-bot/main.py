@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request
 from pydantic import BaseModel
 from langgraph.main_graph import app as langgraph_app
 from utils.state import EventState
+import os
 from dotenv import load_dotenv
 
 app = FastAPI()
