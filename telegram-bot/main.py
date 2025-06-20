@@ -38,18 +38,20 @@ async def handle_webhook(payload: TelegramMessage):
     
     try:
         result = langgraph_app.invoke(state)
-        classification = result.get("input_type", "unknown")
+        
+        # Get the formatted response message from the pipeline
+        response_message = result.get("response_message", "I processed your message but couldn't generate a response.")
         
         # Handle error state
-        if classification == "error":
+        if result.get("error"):
             error_msg = result.get("error", "Unknown error")
             print(f"LangGraph error: {error_msg}")
-            classification = "unknown"
+            response_message = "Sorry, I encountered an error processing your message. Please try again."
         
         # Respond using Telegram sendMessage
         from telegram import Bot
         bot = Bot(token=TELEGRAM_BOT_TOKEN)
-        await bot.send_message(chat_id=chat_id, text=f"Got it! I classified this as: {classification}")
+        await bot.send_message(chat_id=chat_id, text=response_message, parse_mode="Markdown")
         
     except Exception as e:
         print(f"Error processing message: {e}")
