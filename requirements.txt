@@ -1,3 +1,6 @@
 langchain
 langgraph
 anthropic
+fastapi
+uvicorn
+python-telegram-bot
