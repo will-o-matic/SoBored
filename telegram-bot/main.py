@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request
 from pydantic import BaseModel
 from langgraph.main_graph import app as langgraph_app
 from utils.state import EventState
+from dotenv import load_dotenv
 
 app = FastAPI()
 
@@ -11,6 +12,9 @@ class TelegramMessage(BaseModel):
 
 @app.post("/telegram/webhook")
 async def handle_webhook(payload: TelegramMessage):
+    load_dotenv()
+    TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+
     message = payload.message
     text = message.get("text", "")
     chat_id = message["chat"]["id"]
@@ -38,7 +42,7 @@ async def handle_webhook(payload: TelegramMessage):
 
     # Respond using Telegram sendMessage
     from telegram import Bot
-    bot = Bot(token="8057932135:AAHqN_iWcqScAKhtNcFlE7C44IlQi_9S4Xc")
+    bot = Bot(token=TELEGRAM_BOT_TOKEN)
     await bot.send_message(chat_id=chat_id, text=f"Got it! I classified this as: {classification}")
 
     return {"ok": True}
