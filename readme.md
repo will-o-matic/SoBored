@@ -4,7 +4,78 @@ A smart event aggregator and assistant that helps surface interesting things to 
 
 ---
 
+## 🚀 Getting Started (Telegram Bot + FastAPI + LangGraph + ngrok)
 
+This project sets up a Telegram bot that receives user messages, classifies the content (text, image, or URL), and replies with the classification. It uses:
+
+- **FastAPI** to handle Telegram webhooks
+- **LangGraph** to classify content type
+- **ngrok** to expose your local server during development
+- **python-dotenv** to securely manage secrets
+
+---
+
+### 🔧 Prerequisites
+
+- Python 3.9+
+- A Telegram bot token from [@BotFather](https://t.me/BotFather)
+- `ngrok` installed (`brew install ngrok`, `choco install ngrok`, or download from https://ngrok.com)
+
+---
+
+### 📦 Install Dependencies
+
+Create a virtual environment and install required packages:
+
+```bash
+pip install -r requirements.txt
+```
+
+Create a .env file at the project root with:
+
+TELEGRAM_BOT_TOKEN=your-telegram-token-here
+
+Make sure .env is listed in .gitignore to avoid committing secrets.
+
+Start the local webhook server on port 8000:
+
+uvicorn telegram-bot.main:app --reload --port 8000
+
+In a separate terminal:
+
+ngrok http 8000
+
+Copy the HTTPS forwarding URL (e.g. https://abc123.ngrok.io).
+
+Set your webhook using your bot token and ngrok URL:
+
+https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook?url=https://abc123.ngrok.io/telegram/webhook
+
+Replace:
+
+    <YOUR_BOT_TOKEN> with your real token
+
+    https://abc123.ngrok.io with your actual ngrok URL
+
+A successful response will look like:
+
+{
+  "ok": true,
+  "result": true,
+  "description": "Webhook was set"
+}
+
+🧪 Test It!
+
+Send your bot a message:
+
+    Text → it should reply “Classified as: text”
+
+    A URL → reply: “Classified as: url”
+
+    An image → reply: “Classified as: image”
+
+You should see FastAPI and ngrok logs updating as requests come in.
 
 ## Tech Stack
 
