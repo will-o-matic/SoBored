@@ -177,6 +177,9 @@ Each step is a LangGraph node (LangChain tools, custom code, or API call). All s
 ## Roadmap
 
 * [ ] Telegram MVP working end-to-end
+  - Ability to intake text, photo, and URL
+  - Parse and hydrate based on available context
+  - Save to Notion
 * [ ] Cron-based Notion hydrator
 * [ ] Add enrichment: venue details, map links
 * [ ] Web UI with calendar + filters
