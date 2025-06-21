@@ -38,27 +38,33 @@ def parse_text(state: EventState) -> Dict[str, Any]:
         current_date = datetime.now().strftime("%Y-%m-%d")
         current_day = datetime.now().strftime("%A")
         
-        # Structured prompt for event extraction
+        # Structured prompt for event extraction with examples
         prompt = f"""Extract event details from this text and return ONLY a JSON object with these exact fields:
 
-Text: "{state.raw_input}"
-
 Current system date: {current_date} ({current_day})
+
+Examples:
+
+Input: "DJ set at Monarch July 22 at 9pm"
+Output: {{"title": "DJ set", "date": "2025-07-22 21:00", "location": "Monarch", "description": "DJ set at Monarch", "confidence": 0.9}}
+
+Input: "Coffee meetup at Blue Bottle"  
+Output: {{"title": "Coffee meetup", "date": "null", "location": "Blue Bottle", "description": "Coffee meetup tomorrow morning at Blue Bottle", "confidence": 0.8}}
+
+Input: "Check out this cool article about AI"
+Output: {{"title": null, "date": null, "location": null, "description": null, "confidence": 0.1}}
+
+Now extract from this text:
+Text: "{state.raw_input}"
 
 Return JSON with these fields (use null for missing information):
 {{
   "title": "event name/title",
-  "date": "YYYY-MM-DD HH:MM format (convert relative dates like 'today', 'tomorrow', 'this Friday' to actual dates based on current system time)", 
+  "date": "YYYY-MM-DD HH:MM format (convert relative dates to actual dates based on current system time)", 
   "location": "venue/location",
   "description": "brief description",
   "confidence": 0.8
 }}
-
-For date field:
-- Use ISO format: YYYY-MM-DD HH:MM (24-hour time)
-- Convert relative dates: "today" = {current_date}, "tomorrow" = next day, "this Friday" = next Friday date
-- If only date mentioned, assume current day
-- If no time specified, ask for more information
 
 Set confidence between 0-1 based on how clear the event details are. Return ONLY the JSON, no other text."""
 
