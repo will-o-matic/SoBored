@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 """
-URL Parse Test Harness
+SoBored Agent Flow Test Harness
 
-A specialized test harness for testing the URL parsing flow in the SoBored event aggregator.
-This script runs only the URL-specific nodes (classifier -> url_fetcher -> url_parser) 
-without persisting to Notion, providing detailed output for debugging and validation.
+A comprehensive test harness for the ReAct agent-based event processing system.
+Tests the complete pipeline from input classification to Notion saving with 
+detailed output for debugging and validation.
 
 Usage:
     python test_url_parse.py "https://example.com/event"
+    python test_url_parse.py "Concert tonight at 8pm at Central Park"
     python test_url_parse.py --interactive
-    python test_url_parse.py "https://example.com" --verbose
+    python test_url_parse.py "Meeting tomorrow 2pm" --verbose
     python test_url_parse.py "https://example.com" --json
 """
 
@@ -19,16 +20,19 @@ import json
 import argparse
 import re
 from typing import Dict, Any, Optional
-from pprint import pprint
 from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
 
-# Import LangGraph components
-from langgraph.graph import StateGraph, START, END
-from utils.state import EventState
-from langgraph.nodes import classify_input, fetch_url_content, parse_url_content
+# Import the new agent system
+try:
+    from langgraph.main_agent import process_event_input, create_event_processor
+    AGENT_AVAILABLE = True
+    AGENT_ERROR = None
+except ImportError as e:
+    AGENT_AVAILABLE = False
+    AGENT_ERROR = str(e)
 
 
 class Colors:
@@ -44,124 +48,79 @@ class Colors:
     UNDERLINE = '\033[4m'
 
 
-def create_url_test_graph():
-    """
-    Create a LangGraph for testing URL parsing flow only.
-    
-    This graph excludes Notion saving and focuses only on:
-    - Classification of input
-    - URL content fetching  
-    - URL content parsing
-    
-    Returns:
-        Compiled LangGraph application for URL testing
-    """
-    print(f"{Colors.HEADER}=' Creating URL test graph...{Colors.ENDC}")
-    
-    # Create the graph
-    graph = StateGraph(EventState)
-    
-    # Add only URL-relevant nodes
-    graph.add_node("classifier", classify_input)
-    graph.add_node("url_fetcher", fetch_url_content)
-    graph.add_node("url_parser", parse_url_content)
-    
-    # Set up the flow
-    graph.add_edge(START, "classifier")
-    
-    # Conditional edge: route based on input type
-    def route_after_classification(state: EventState) -> str:
-        if state.input_type == "url":
-            return "url_fetcher"
-        else:
-            return "END"  # Skip if not a URL
-    
-    graph.add_conditional_edges("classifier", route_after_classification, {
-        "url_fetcher": "url_fetcher",
-        "END": END
-    })
-    
-    # Linear flow for URL processing
-    graph.add_edge("url_fetcher", "url_parser")
-    graph.add_edge("url_parser", END)
-    
-    print(f"{Colors.OKGREEN} URL test graph created successfully{Colors.ENDC}")
-    return graph.compile()
-
-
-def print_state_section(title: str, state: EventState, fields: list, verbose: bool = False):
-    """
-    Print a formatted section of the EventState.
-    
-    Args:
-        title: Section title
-        state: Current EventState
-        fields: List of field names to display
-        verbose: Whether to show detailed field descriptions
-    """
-    print(f"\n{Colors.BOLD}{Colors.UNDERLINE}{title}{Colors.ENDC}")
+def print_section(title: str, content: Any = None, color: str = Colors.OKBLUE):
+    """Print a formatted section with optional content."""
+    print(f"\n{color}{Colors.BOLD}{title}{Colors.ENDC}")
     print("-" * len(title))
-    
-    for field in fields:
-        # Handle both EventState objects and dictionary-like objects
-        if hasattr(state, field):
-            value = getattr(state, field, None)
+    if content is not None:
+        if isinstance(content, dict):
+            for key, value in content.items():
+                if isinstance(value, str) and len(value) > 100:
+                    value = value[:100] + "..."
+                print(f"{Colors.OKCYAN}{key}:{Colors.ENDC} {value}")
+        elif isinstance(content, list):
+            for i, item in enumerate(content, 1):
+                print(f"{Colors.OKCYAN}{i}.{Colors.ENDC} {item}")
         else:
-            value = state.get(field, None) if hasattr(state, 'get') else None
-            
-        if value is not None:
-            # Format different types appropriately
-            if isinstance(value, str) and len(value) > 100 and not verbose:
-                display_value = value[:100] + "..."
-            else:
-                display_value = value
-            
-            print(f"{Colors.OKCYAN}{field}:{Colors.ENDC} {display_value}")
-        elif verbose:
-            print(f"{Colors.WARNING}{field}:{Colors.ENDC} None")
+            print(content)
 
 
-def dump_full_state(state: EventState, verbose: bool = False):
+def check_environment() -> Dict[str, Any]:
+    """Check environment setup and dependencies."""
+    env_status = {}
+    
+    # Check required environment variables
+    required_vars = {
+        "ANTHROPIC_API_KEY": os.getenv("ANTHROPIC_API_KEY"),
+        "NOTION_TOKEN": os.getenv("NOTION_TOKEN"),
+        "NOTION_DATABASE_ID": os.getenv("NOTION_DATABASE_ID")
+    }
+    
+    env_status["environment_variables"] = {}
+    for var_name, var_value in required_vars.items():
+        env_status["environment_variables"][var_name] = "✓ Set" if var_value else "✗ Missing"
+    
+    # Check Python dependencies
+    deps_to_check = [
+        ("langchain", "langchain"),
+        ("langchain_anthropic", "langchain-anthropic"), 
+        ("langchain_mcp", "langchain-mcp-adapters"),
+        ("anthropic", "anthropic"),
+        ("requests", "requests"),
+        ("bs4", "beautifulsoup4"),
+        ("notion_client", "notion-client"),
+        ("fastapi", "fastapi"),
+        ("telegram", "python-telegram-bot")
+    ]
+    
+    env_status["dependencies"] = {}
+    for import_name, package_name in deps_to_check:
+        try:
+            __import__(import_name)
+            env_status["dependencies"][package_name] = "✓ Available"
+        except ImportError:
+            env_status["dependencies"][package_name] = "✗ Missing"
+    
+    # Check agent system availability
+    env_status["agent_system"] = "✓ Available" if AGENT_AVAILABLE else f"✗ Error: {AGENT_ERROR}"
+    
+    return env_status
+
+
+def test_agent_flow(
+    raw_input: str,
+    source: str = "test_harness", 
+    input_type: Optional[str] = None,
+    verbose: bool = False,
+    json_output: bool = False
+) -> Dict[str, Any]:
     """
-    Display the complete EventState in a formatted way.
+    Test the ReAct agent-based event processing flow.
     
     Args:
-        state: EventState to display
-        verbose: Whether to show all fields including None values
-    """
-    print(f"\n{Colors.HEADER}{'='*60}{Colors.ENDC}")
-    print(f"{Colors.HEADER}{Colors.BOLD}COMPLETE EVENT STATE{Colors.ENDC}")
-    print(f"{Colors.HEADER}{'='*60}{Colors.ENDC}")
-    
-    # Input & Classification
-    print_state_section("=� INPUT & CLASSIFICATION", state, [
-        "raw_input", "source", "input_type", "error"
-    ], verbose)
-    
-    # Webpage Fetching
-    print_state_section("< WEBPAGE FETCHING", state, [
-        "fetch_status", "fetch_error", "webpage_title", "webpage_content"
-    ], verbose)
-    
-    # Event Parsing
-    print_state_section("<� EVENT PARSING", state, [
-        "event_title", "event_date", "event_location", "event_description", "parsing_confidence"
-    ], verbose)
-    
-    # Response (if any)
-    print_state_section("=� RESPONSE", state, [
-        "response_message"
-    ], verbose)
-    
-    print(f"{Colors.HEADER}{'='*60}{Colors.ENDC}\n")
-
-
-def test_url_parse(url: str, verbose: bool = False, json_output: bool = False) -> Dict[str, Any]:
-    """
-    Test the URL parsing flow with a specific URL.
-    
-    Args:
-        url: URL to test
+        raw_input: Input content to process
+        source: Source of the input
+        input_type: Pre-classified input type (optional)
         verbose: Whether to show detailed output
         json_output: Whether to output results as JSON
         
@@ -169,316 +128,420 @@ def test_url_parse(url: str, verbose: bool = False, json_output: bool = False) -
         Dict containing test results
     """
     if not json_output:
-        print(f"\n{Colors.BOLD}{Colors.OKBLUE}>� TESTING URL PARSE FLOW{Colors.ENDC}")
-        print(f"{Colors.BOLD}URL: {url}{Colors.ENDC}")
-        print(f"{Colors.HEADER}{'='*60}{Colors.ENDC}")
+        print(f"\n{Colors.BOLD}{Colors.HEADER}🤖 TESTING REACT AGENT FLOW{Colors.ENDC}")
+        print(f"{Colors.BOLD}Input:{Colors.ENDC} {raw_input}")
+        print(f"{Colors.BOLD}Source:{Colors.ENDC} {source}")
+        if input_type:
+            print(f"{Colors.BOLD}Pre-classified Type:{Colors.ENDC} {input_type}")
+        print(f"{Colors.HEADER}{'='*70}{Colors.ENDC}")
+    
+    # Check if agent system is available
+    if not AGENT_AVAILABLE:
+        error_msg = f"Agent system not available: {AGENT_ERROR}"
+        if not json_output:
+            print_section("❌ SYSTEM ERROR", error_msg, Colors.FAIL)
+        
+        result = {"success": False, "error": error_msg, "input": raw_input}
+        if json_output:
+            print(json.dumps(result, indent=2))
+        return result
     
     try:
-        # Create the test graph
-        app = create_url_test_graph()
+        # Environment check
+        if not json_output and verbose:
+            env_status = check_environment()
+            print_section("🔧 ENVIRONMENT CHECK", color=Colors.OKCYAN)
+            
+            print(f"\n{Colors.BOLD}Environment Variables:{Colors.ENDC}")
+            for var, status in env_status["environment_variables"].items():
+                color = Colors.OKGREEN if "✓" in status else Colors.FAIL
+                print(f"  {color}{status}{Colors.ENDC} {var}")
+            
+            print(f"\n{Colors.BOLD}Dependencies:{Colors.ENDC}")
+            for dep, status in env_status["dependencies"].items():
+                color = Colors.OKGREEN if "✓" in status else Colors.WARNING
+                print(f"  {color}{status}{Colors.ENDC} {dep}")
+            
+            print(f"\n{Colors.BOLD}Agent System:{Colors.ENDC}")
+            agent_color = Colors.OKGREEN if "✓" in env_status["agent_system"] else Colors.FAIL
+            print(f"  {agent_color}{env_status['agent_system']}{Colors.ENDC}")
         
-        # Create initial state
-        initial_state = EventState(
-            raw_input=url,
-            source="test_harness"
+        # Process using the ReAct agent system
+        if not json_output:
+            print_section("🚀 PROCESSING WITH REACT AGENT", color=Colors.OKBLUE)
+            print("Initializing agent and processing input...")
+        
+        # Call the main agent processing function
+        result = process_event_input(
+            raw_input=raw_input,
+            source=source,
+            input_type=input_type
         )
         
         if not json_output:
-            print(f"\n{Colors.OKBLUE}=� Initial State:{Colors.ENDC}")
-            print(f"Raw Input: {url}")
-            print(f"Source: test_harness")
-        
-        # Execute the graph and capture intermediate states
-        if not json_output:
-            print(f"\n{Colors.OKBLUE}Executing URL parse flow...{Colors.ENDC}")
-            
-            # Check execution environment and dependencies
-            print(f"\n{Colors.OKCYAN}Environment Check:{Colors.ENDC}")
-            print(f"Execution context: {'Claude Code session' if any(['claude' in str(type(obj)).lower() for obj in globals().values()]) else 'Standalone Python script'}")
-            print(f"Python executable: {sys.executable}")
-            print(f"Working directory: {os.getcwd()}")
-            
-            print(f"\n{Colors.OKCYAN}Dependency Check:{Colors.ENDC}")
-            try:
-                import requests
-                print(f"✓ requests module available")
-            except ImportError:
-                print(f"✗ requests module missing")
-            
-            try:
-                import bs4
-                print(f"✓ beautifulsoup4 (bs4) module available")
-            except ImportError:
-                print(f"✗ beautifulsoup4 (bs4) module missing")
-            
-            # Check for MCP fetch availability (multiple possible ways)
-            mcp_available = False
-            mcp_methods = []
-            
-            try:
-                from mcp import fetch
-                mcp_available = True
-                mcp_methods.append("importable module")
-            except ImportError:
-                pass
-            
-            if 'mcp__fetch__fetch' in globals():
-                mcp_available = True
-                mcp_methods.append("global function")
-            
-            # Check if we're in a Claude Code environment
-            claude_code_indicators = [
-                'mcp__fetch__fetch' in dir(),
-                any('claude' in str(type(obj)).lower() for obj in globals().values()),
-                os.getenv('CLAUDE_CODE_SESSION') is not None
-            ]
-            
-            if mcp_available:
-                print(f"✓ MCP fetch available ({', '.join(mcp_methods)})")
-            else:
-                print(f"✗ MCP fetch not available")
-                if any(claude_code_indicators):
-                    print(f"  ℹ️  Running in Claude Code but MCP not detected")
-                else:
-                    print(f"  ℹ️  Running standalone (MCP only available in Claude Code sessions)")
-                print(f"  → Using requests + beautifulsoup4 fallback")
-            
-            # Test basic connectivity
-            try:
-                import urllib.request
-                import socket
-                socket.setdefaulttimeout(5)
-                with urllib.request.urlopen("https://httpbin.org/status/200") as response:
-                    if response.getcode() == 200:
-                        print(f"✓ Basic HTTP connectivity working")
-                    else:
-                        print(f"✗ HTTP connectivity issues (status: {response.getcode()})")
-            except Exception as e:
-                print(f"✗ HTTP connectivity test failed: {str(e)[:50]}...")
-        
-        # Run the complete graph
-        final_state = app.invoke(initial_state)
-        
-        if not json_output:
             # Display results
-            if final_state.get('input_type') != "url":
-                print(f"\n{Colors.WARNING}�  Input was not classified as URL!{Colors.ENDC}")
-                print(f"Classified as: {final_state.get('input_type', 'unknown')}")
-                dump_full_state(final_state, verbose)
-                return {"error": "Input not classified as URL", "state": dict(final_state)}
-            
-            # Show fetch results
-            print(f"\n{Colors.OKGREEN}< Webpage Fetch Results:{Colors.ENDC}")
-            print(f"Status: {final_state.get('fetch_status')}")
-            if final_state.get('fetch_error'):
-                error_msg = final_state.get('fetch_error')
-                print(f"{Colors.FAIL}Error: {error_msg}{Colors.ENDC}")
+            if result.get("success"):
+                print_section("✅ AGENT EXECUTION SUCCESSFUL", color=Colors.OKGREEN)
                 
-                # Provide helpful troubleshooting info
-                if "No module named 'bs4'" in str(error_msg):
-                    print(f"\n{Colors.WARNING}Fix: Install missing dependencies:{Colors.ENDC}")
-                    print(f"   pip install requests beautifulsoup4")
-                elif "No module named 'requests'" in str(error_msg):
-                    print(f"\n{Colors.WARNING}Fix: Install missing dependencies:{Colors.ENDC}")
-                    print(f"   pip install requests beautifulsoup4")
-                elif "No module named 'mcp'" in str(error_msg):
-                    print(f"\n{Colors.WARNING}Note: MCP not available, using fallback{Colors.ENDC}")
-            if final_state.get('webpage_title'):
-                print(f"Title: {final_state.get('webpage_title')}")
-            if final_state.get('webpage_content'):
-                webpage_content = final_state.get('webpage_content', '')
-                content_preview = webpage_content[:200] + "..." if len(webpage_content) > 200 else webpage_content
-                print(f"Content (preview): {content_preview}")
-            elif final_state.get('fetch_status') == 'success':
-                print(f"{Colors.WARNING}Warning: Fetch succeeded but no content retrieved{Colors.ENDC}")
-            
-            # Show parsing results
-            print(f"\n{Colors.OKGREEN}<� Event Parsing Results:{Colors.ENDC}")
-            if final_state.get('parsing_confidence') is not None:
-                confidence = final_state.get('parsing_confidence', 0)
-                confidence_color = Colors.OKGREEN if confidence > 0.7 else Colors.WARNING if confidence > 0.4 else Colors.FAIL
-                print(f"Confidence: {confidence_color}{confidence:.2f}{Colors.ENDC}")
-            
-            if final_state.get('event_title'):
-                print(f"Event Title: {final_state.get('event_title')}")
-            if final_state.get('event_date'):
-                print(f"Event Date: {final_state.get('event_date')}")
-            if final_state.get('event_location'):
-                print(f"Event Location: {final_state.get('event_location')}")
-            if final_state.get('event_description'):
-                print(f"Event Description: {final_state.get('event_description')}")
-            
-            # Show full state if verbose
-            if verbose:
-                dump_full_state(final_state, verbose=True)
+                # Show agent output
+                agent_output = result.get("agent_output", "No output provided")
+                print(f"\n{Colors.BOLD}Agent Response:{Colors.ENDC}")
+                print(agent_output)
+                
+                # Parse and display key information from agent output
+                if "notion" in agent_output.lower():
+                    print_section("📝 NOTION INTEGRATION STATUS", color=Colors.OKCYAN)
+                    if any(word in agent_output.lower() for word in ["success", "saved", "created"]):
+                        print(f"{Colors.OKGREEN}✓ Event successfully saved to Notion{Colors.ENDC}")
+                    elif any(word in agent_output.lower() for word in ["failed", "error", "could not"]):
+                        print(f"{Colors.FAIL}✗ Failed to save to Notion{Colors.ENDC}")
+                    else:
+                        print(f"{Colors.WARNING}? Notion save status unclear{Colors.ENDC}")
+                
+                # Show reasoning steps if available and verbose
+                if verbose and result.get("reasoning_steps"):
+                    print_section("🧠 AGENT REASONING STEPS", color=Colors.OKCYAN)
+                    for i, step in enumerate(result["reasoning_steps"], 1):
+                        print(f"\n{Colors.BOLD}Step {i}:{Colors.ENDC}")
+                        print(f"  {Colors.OKCYAN}Action:{Colors.ENDC} {step.get('action', 'Unknown')}")
+                        
+                        step_input = step.get('input', 'None')
+                        if len(str(step_input)) > 150:
+                            step_input = str(step_input)[:150] + "..."
+                        print(f"  {Colors.OKCYAN}Input:{Colors.ENDC} {step_input}")
+                        
+                        step_output = step.get('output', 'None')
+                        if len(str(step_output)) > 200:
+                            step_output = str(step_output)[:200] + "..."
+                        print(f"  {Colors.OKCYAN}Output:{Colors.ENDC} {step_output}")
+                
+                # Extract any structured event data from the response
+                if verbose:
+                    print_section("📊 EXTRACTED EVENT DATA", color=Colors.OKCYAN)
+                    # Try to extract structured data from agent output
+                    extracted_data = extract_event_data_from_output(agent_output)
+                    if extracted_data:
+                        for key, value in extracted_data.items():
+                            if value:
+                                print(f"  {Colors.OKCYAN}{key.title()}:{Colors.ENDC} {value}")
+                    else:
+                        print("  No structured event data extracted")
+                
+            else:
+                print_section("❌ AGENT EXECUTION FAILED", color=Colors.FAIL)
+                error_msg = result.get("error", "Unknown error occurred")
+                print(f"Error: {error_msg}")
+                
+                # Provide helpful troubleshooting suggestions
+                if "api" in error_msg.lower():
+                    print(f"\n{Colors.WARNING}💡 Troubleshooting:{Colors.ENDC}")
+                    print("  - Check your ANTHROPIC_API_KEY in .env file")
+                    print("  - Ensure you have sufficient API credits")
+                elif "notion" in error_msg.lower():
+                    print(f"\n{Colors.WARNING}💡 Troubleshooting:{Colors.ENDC}")
+                    print("  - Check your NOTION_TOKEN in .env file")
+                    print("  - Verify NOTION_DATABASE_ID is correct")
+                    print("  - Ensure the integration has proper permissions")
         
         # Prepare return data
-        result = {
-            "success": True,
-            "url": url,
-            "classification": final_state.get('input_type'),
-            "fetch_status": final_state.get('fetch_status'),
-            "parsing_confidence": final_state.get('parsing_confidence'),
-            "parsed_event": {
-                "title": final_state.get('event_title'),
-                "date": final_state.get('event_date'),
-                "location": final_state.get('event_location'),
-                "description": final_state.get('event_description')
-            },
-            "full_state": dict(final_state) if verbose else None
+        test_result = {
+            "success": result.get("success", False),
+            "input": raw_input,
+            "source": source,
+            "input_type": input_type,
+            "agent_output": result.get("agent_output", ""),
+            "error": result.get("error") if not result.get("success") else None,
+            "reasoning_steps": result.get("reasoning_steps", []) if verbose else None,
+            "timestamp": result.get("timestamp"),
+            "processing_time": result.get("processing_time")
         }
         
         if json_output:
-            print(json.dumps(result, indent=2))
+            print(json.dumps(test_result, indent=2, default=str))
         
-        return result
+        return test_result
         
     except Exception as e:
-        error_msg = f"Test failed: {str(e)}"
+        error_msg = f"Test execution failed: {str(e)}"
         if not json_output:
-            print(f"\n{Colors.FAIL}L {error_msg}{Colors.ENDC}")
+            print_section("💥 UNEXPECTED ERROR", error_msg, Colors.FAIL)
+            print(f"\n{Colors.WARNING}💡 This might indicate:{Colors.ENDC}")
+            print("  - Missing dependencies (run: pip install -r requirements.txt)")
+            print("  - Import path issues")
+            print("  - Environment configuration problems")
         
-        result = {"success": False, "error": error_msg, "url": url}
+        result = {"success": False, "error": error_msg, "input": raw_input, "source": source}
         if json_output:
             print(json.dumps(result, indent=2))
         
         return result
+
+
+def extract_event_data_from_output(agent_output: str) -> Dict[str, str]:
+    """Extract structured event data from agent output text."""
+    extracted = {}
+    
+    # Common patterns for event data
+    patterns = {
+        "title": [
+            r"title[:\s]+([^\n]+)",
+            r"event[:\s]+([^\n]+)",
+            r"name[:\s]+([^\n]+)"
+        ],
+        "date": [
+            r"date[:\s]+([^\n]+)",
+            r"when[:\s]+([^\n]+)",
+            r"time[:\s]+([^\n]+)"
+        ],
+        "location": [
+            r"location[:\s]+([^\n]+)",
+            r"where[:\s]+([^\n]+)",
+            r"venue[:\s]+([^\n]+)"
+        ]
+    }
+    
+    for field, field_patterns in patterns.items():
+        for pattern in field_patterns:
+            match = re.search(pattern, agent_output, re.IGNORECASE)
+            if match:
+                extracted[field] = match.group(1).strip()
+                break
+    
+    return extracted
 
 
 def interactive_mode(verbose: bool = False):
     """
-    Interactive mode for testing multiple URLs.
+    Interactive mode for testing multiple inputs with the agent.
     
     Args:
         verbose: Whether to show detailed output
     """
-    print(f"\n{Colors.BOLD}{Colors.HEADER}<� INTERACTIVE URL PARSE TESTING{Colors.ENDC}")
-    print("Enter URLs to test (or 'quit' to exit)")
-    print(f"{Colors.OKCYAN}Tip: Use 'verbose on/off' to toggle detailed output{Colors.ENDC}")
-    print("-" * 50)
+    print(f"\n{Colors.BOLD}{Colors.HEADER}🤖 INTERACTIVE AGENT TESTING{Colors.ENDC}")
+    print("Enter content to test (URLs, text descriptions, events) or 'quit' to exit")
+    print(f"\n{Colors.OKCYAN}Available Commands:{Colors.ENDC}")
+    print("  'verbose on/off'    - Toggle detailed output")
+    print("  'source <name>'     - Set input source")
+    print("  'type <type>'       - Pre-set input type")
+    print("  'type reset'        - Clear input type")
+    print("  'env'               - Show environment status")
+    print("  'help'              - Show this help")
+    print("  'quit' or 'exit'    - Exit interactive mode")
+    print("-" * 60)
+    
+    current_source = "interactive"
+    current_type = None
     
     while True:
         try:
-            url = input(f"\n{Colors.BOLD}Enter URL: {Colors.ENDC}").strip()
+            # Show current settings
+            settings = f"Source: {current_source}"
+            if current_type:
+                settings += f", Type: {current_type}"
+            if verbose:
+                settings += ", Verbose: ON"
             
-            if url.lower() in ['quit', 'exit', 'q']:
-                print(f"{Colors.OKGREEN}=K Goodbye!{Colors.ENDC}")
+            user_input = input(f"\n{Colors.BOLD}[{settings}] Enter input: {Colors.ENDC}").strip()
+            
+            # Handle exit commands
+            if user_input.lower() in ['quit', 'exit', 'q']:
+                print(f"{Colors.OKGREEN}👋 Goodbye!{Colors.ENDC}")
                 break
             
-            if url.lower() == 'verbose on':
+            # Handle commands
+            if user_input.lower() == 'verbose on':
                 verbose = True
-                print(f"{Colors.OKGREEN} Verbose mode enabled{Colors.ENDC}")
+                print(f"{Colors.OKGREEN}✓ Verbose mode enabled{Colors.ENDC}")
                 continue
-            elif url.lower() == 'verbose off':
+            elif user_input.lower() == 'verbose off':
                 verbose = False
-                print(f"{Colors.OKGREEN} Verbose mode disabled{Colors.ENDC}")
+                print(f"{Colors.OKGREEN}✓ Verbose mode disabled{Colors.ENDC}")
+                continue
+            elif user_input.lower().startswith('source '):
+                current_source = user_input[7:].strip()
+                print(f"{Colors.OKGREEN}✓ Source set to: {current_source}{Colors.ENDC}")
+                continue
+            elif user_input.lower().startswith('type '):
+                if user_input.lower() == 'type reset':
+                    current_type = None
+                    print(f"{Colors.OKGREEN}✓ Input type reset{Colors.ENDC}")
+                else:
+                    current_type = user_input[5:].strip()
+                    print(f"{Colors.OKGREEN}✓ Input type set to: {current_type}{Colors.ENDC}")
+                continue
+            elif user_input.lower() == 'env':
+                env_status = check_environment()
+                print_section("🔧 ENVIRONMENT STATUS", env_status, Colors.OKCYAN)
+                continue
+            elif user_input.lower() == 'help':
+                print(f"\n{Colors.OKCYAN}Available Commands:{Colors.ENDC}")
+                print("  'verbose on/off'    - Toggle detailed output")
+                print("  'source <name>'     - Set input source")
+                print("  'type <type>'       - Pre-set input type")
+                print("  'type reset'        - Clear input type")
+                print("  'env'               - Show environment status")
+                print("  'help'              - Show this help")
+                print("  'quit' or 'exit'    - Exit interactive mode")
                 continue
             
-            if not url:
+            if not user_input:
                 continue
             
-            # Validate URL format
-            if not re.match(r'https?://', url):
-                print(f"{Colors.WARNING}�  Adding https:// prefix to URL{Colors.ENDC}")
-                url = "https://" + url
-            
-            # Test the URL
-            test_url_parse(url, verbose=verbose)
+            # Test the input with current settings
+            test_agent_flow(
+                raw_input=user_input,
+                source=current_source,
+                input_type=current_type,
+                verbose=verbose
+            )
             
         except KeyboardInterrupt:
-            print(f"\n{Colors.OKGREEN}=K Goodbye!{Colors.ENDC}")
+            print(f"\n{Colors.OKGREEN}👋 Goodbye!{Colors.ENDC}")
             break
         except Exception as e:
-            print(f"{Colors.FAIL}L Error: {e}{Colors.ENDC}")
+            print(f"{Colors.FAIL}💥 Error: {e}{Colors.ENDC}")
 
 
-def validate_url(url: str) -> str:
+def validate_input(user_input: str) -> str:
     """
-    Validate and normalize URL format.
+    Validate and normalize input.
     
     Args:
-        url: URL to validate
+        user_input: User input to validate
         
     Returns:
-        Normalized URL
+        Normalized input
         
     Raises:
-        ValueError: If URL is invalid
+        ValueError: If input is invalid
     """
-    if not url:
-        raise ValueError("URL cannot be empty")
+    if not user_input or not user_input.strip():
+        raise ValueError("Input cannot be empty")
     
-    # Add protocol if missing
-    if not re.match(r'https?://', url):
-        url = "https://" + url
-    
-    # Basic URL validation
-    url_pattern = r'https?://(?:[-\w.])+(?:[:\d]+)?(?:/(?:[\w/_.])*(?:\?(?:[\w&=%.])*)?(?:#(?:\w)*)?)?'
-    if not re.match(url_pattern, url):
-        raise ValueError(f"Invalid URL format: {url}")
-    
-    return url
+    return user_input.strip()
 
 
 def main():
-    """Main CLI interface for URL parse testing."""
+    """Main CLI interface for agent flow testing."""
     parser = argparse.ArgumentParser(
-        description="Test harness for URL parsing flow in SoBored event aggregator",
+        description="Test harness for ReAct agent-based event processing in SoBored",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
   python test_url_parse.py "https://eventbrite.com/some-event"
-  python test_url_parse.py "https://example.com" --verbose
+  python test_url_parse.py "Concert tonight at 8pm at Central Park"
+  python test_url_parse.py "Meeting tomorrow 2pm" --verbose
   python test_url_parse.py --interactive
-  python test_url_parse.py "https://example.com" --json
-  
-Environment:
-  Requires ANTHROPIC_API_KEY in .env file for Claude API access.
+  python test_url_parse.py "Workshop next Friday" --json --source email
+
+Environment Requirements:
+  ANTHROPIC_API_KEY     - Required for Claude API access
+  NOTION_TOKEN          - Optional for Notion integration
+  NOTION_DATABASE_ID    - Optional for Notion integration
+
+Note: The system will work without Notion credentials but won't save events.
         """
     )
     
     parser.add_argument(
-        'url', 
+        'input', 
         nargs='?', 
-        help='URL to test (required unless --interactive is used)'
+        help='Content to process: URL, text description, event details, etc.'
+    )
+    parser.add_argument(
+        '--source', '-s',
+        default='test_harness',
+        help='Source of the input (default: test_harness)'
+    )
+    parser.add_argument(
+        '--type', '-t',
+        help='Pre-classify input type (url, text, image, etc.)'
     )
     parser.add_argument(
         '--interactive', '-i',
         action='store_true',
-        help='Interactive mode for testing multiple URLs'
+        help='Interactive mode for testing multiple inputs'
     )
     parser.add_argument(
         '--verbose', '-v',
         action='store_true',
-        help='Show detailed output including full state dump'
+        help='Show detailed output including reasoning steps and environment info'
     )
     parser.add_argument(
         '--json', '-j',
         action='store_true',
         help='Output results as JSON (useful for scripting)'
     )
+    parser.add_argument(
+        '--check-env',
+        action='store_true',
+        help='Check environment setup and exit'
+    )
     
     args = parser.parse_args()
     
+    # Handle environment check
+    if args.check_env:
+        env_status = check_environment()
+        print_section("🔧 ENVIRONMENT STATUS", color=Colors.HEADER)
+        
+        print(f"\n{Colors.BOLD}Environment Variables:{Colors.ENDC}")
+        for var, status in env_status["environment_variables"].items():
+            color = Colors.OKGREEN if "✓" in status else Colors.FAIL
+            print(f"  {color}{status}{Colors.ENDC} {var}")
+        
+        print(f"\n{Colors.BOLD}Dependencies:{Colors.ENDC}")
+        for dep, status in env_status["dependencies"].items():
+            color = Colors.OKGREEN if "✓" in status else Colors.WARNING
+            print(f"  {color}{status}{Colors.ENDC} {dep}")
+        
+        print(f"\n{Colors.BOLD}Agent System:{Colors.ENDC}")
+        agent_color = Colors.OKGREEN if "✓" in env_status["agent_system"] else Colors.FAIL
+        print(f"  {agent_color}{env_status['agent_system']}{Colors.ENDC}")
+        
+        # Check if core requirements are met
+        anthropic_key = env_status["environment_variables"].get("ANTHROPIC_API_KEY")
+        agent_system = env_status["agent_system"]
+        
+        if "✓" in anthropic_key and "✓" in agent_system:
+            print(f"\n{Colors.OKGREEN}✅ Core requirements met - ready for testing!{Colors.ENDC}")
+            sys.exit(0)
+        else:
+            print(f"\n{Colors.FAIL}❌ Core requirements not met{Colors.ENDC}")
+            if "✗" in anthropic_key:
+                print("  - Add ANTHROPIC_API_KEY to your .env file")
+            if "✗" in agent_system:
+                print("  - Fix agent system import issues")
+            sys.exit(1)
+    
     # Check for required environment variables
     if not os.getenv("ANTHROPIC_API_KEY"):
-        print(f"{Colors.FAIL}L ANTHROPIC_API_KEY not found in environment{Colors.ENDC}")
+        print(f"{Colors.FAIL}💥 ANTHROPIC_API_KEY not found in environment{Colors.ENDC}")
         print("Add your Claude API key to the .env file:")
         print("ANTHROPIC_API_KEY=your-key-here")
+        print(f"\nUse {Colors.BOLD}--check-env{Colors.ENDC} to see full environment status")
         sys.exit(1)
     
+    # Handle interactive mode
     if args.interactive:
         interactive_mode(verbose=args.verbose)
-    elif args.url:
+    elif args.input:
         try:
-            validated_url = validate_url(args.url)
-            test_url_parse(validated_url, verbose=args.verbose, json_output=args.json)
+            validated_input = validate_input(args.input)
+            test_agent_flow(
+                raw_input=validated_input,
+                source=args.source,
+                input_type=args.type,
+                verbose=args.verbose,
+                json_output=args.json
+            )
         except ValueError as e:
-            print(f"{Colors.FAIL}L {e}{Colors.ENDC}")
+            print(f"{Colors.FAIL}💥 {e}{Colors.ENDC}")
             sys.exit(1)
     else:
-        print(f"{Colors.FAIL}L Please provide a URL or use --interactive mode{Colors.ENDC}")
-        parser.print_help()
+        print(f"{Colors.FAIL}💥 Please provide input or use --interactive mode{Colors.ENDC}")
+        print(f"Use {Colors.BOLD}--help{Colors.ENDC} for usage information")
+        print(f"Use {Colors.BOLD}--check-env{Colors.ENDC} to check your environment setup")
         sys.exit(1)
 
 

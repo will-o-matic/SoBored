@@ -1,8 +1,13 @@
 langchain
 langgraph
+langchain-mcp-adapters
+langchain-mcp
+langchain-anthropic
 anthropic
 fastapi
 uvicorn
 python-telegram-bot
 python-dotenv
 notion-client
+requests
+beautifulsoup4

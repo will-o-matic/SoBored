@@ -19,8 +19,9 @@ uvicorn telegram-bot.main:app --reload --port 8000
 # In a separate terminal, expose with ngrok
 ngrok http 8000
 
-# Test the LangGraph pipeline directly
-python test_run_graph.py
+# Test the ReAct agent pipeline directly  
+python test_url_parse.py "https://example.com/event"
+python test_url_parse.py "Concert tonight at 8pm"
 ```
 
 ### Development Utilities
@@ -47,31 +48,37 @@ python -m utils.notion_dev_utils clean-database <id> --dry-run      # Test clean
 
 ## Architecture Overview
 
-This is a smart event aggregator using **LangGraph** for content classification and **Telegram Bot** as the primary interface.
+This is a smart event aggregator using **LangChain ReAct Agents** with **LangGraph tools** for content processing and **Telegram Bot** as the primary interface. The system has been refactored from custom StateGraph to proper ReAct agent pattern with MCP integration.
 
 ### Core Components
 
-**LangGraph Pipeline** (`langgraph/main_graph.py`):
-- Uses `StateGraph(EventState)` with classifier, parser, notion_saver, and responder nodes
-- Flow: Input → Classify → Parse (text only) → Save to Notion → Respond
-- Compiles to `app` that can be invoked with EventState
+**ReAct Agent System** (`langgraph/main_agent.py`):
+- Uses `create_react_agent()` with LangChain tools following ReAct reasoning pattern
+- Flow: Input → Agent reasoning → Tool invocation → Save to Notion → Respond
+- Supports MCP (Model Context Protocol) integration for enhanced tool capabilities
 
-**State Management** (`utils/state.py`):
-- `EventState` is a Pydantic model with classification, parsing, and Notion fields
+**Agent Tools** (`langgraph/agents/tools/`):
+- `classify_input`: @tool decorated function for input classification (text, URL, image, etc.)
+- `fetch_url_content`: @tool for webpage content fetching with MCP/requests fallback
+- `parse_url_content`: @tool for Claude-powered event extraction from webpage content
+- `save_to_notion`: @tool for structured Notion database integration
+
+**State Management** (Legacy `utils/state.py`):
+- `EventState` still used for backward compatibility with Telegram integration
 - Core fields: `input_type`, `raw_input`, `source`, `event_*` parsed fields
-- Notion fields: `notion_page_id`, `notion_save_status`, `notion_error`, `notion_url`
-- Shared state object flows through the entire LangGraph pipeline
-
-**Classification Logic** (`langgraph/nodes/classifier_node.py`):
-- `classify_input()` function takes EventState and returns updated EventState
-- Detects: image (via pre-set input_type), URL (regex), text, or unknown
-- Simple regex-based URL detection: `r'https?://\S+'`
+- Agent system handles state internally but provides compatibility layer
 
 **Telegram Integration** (`telegram-bot/main.py`):
 - FastAPI app with `/telegram/webhook` endpoint
-- Converts Telegram message format to EventState
-- Invokes LangGraph app and responds with classification result
-- Uses `python-telegram-bot` library for sending responses
+- Converts Telegram message format and calls `process_event_input()`
+- Uses ReAct agent via `langgraph.main_agent.process_event_input()`
+- Maintains backward compatibility with EventState format
+
+**MCP Integration** (`langgraph/mcp/`):
+- `MCPClientWrapper` for integrating Model Context Protocol tools
+- Automatic detection and integration of available MCP servers
+- Fallback to requests/BeautifulSoup when MCP unavailable
+- Supports web fetch, filesystem, and other MCP tool capabilities
 
 **Notion Integration** (`utils/notion_client.py`):
 - `NotionClientWrapper` class handles all Notion API interactions
@@ -79,68 +86,93 @@ This is a smart event aggregator using **LangGraph** for content classification 
 - `create_events_database_schema()` defines structured database schema
 - Comprehensive error handling for permissions, rate limits, and connectivity
 
-**Save to Notion Node** (`langgraph/nodes/save_to_notion_node.py`):
-- `save_to_notion()` function creates pages in Notion database
-- Maps EventState fields to Notion page properties
-- Handles different input types and generates fallback titles
-- Updates state with save status and Notion URL
-
-### Data Flow
-1. Telegram webhook receives message → FastAPI endpoint
-2. Message converted to EventState (raw_input, input_type, source)
-3. EventState passed to LangGraph app.invoke()
-4. Classifier node processes and updates input_type
-5. Parser node extracts event details (text inputs only)
-6. Notion saver creates database entry
-7. Responder formats reply with Notion status
-8. Result sent back to Telegram chat
+### Data Flow (New ReAct Agent Architecture)
+1. Input received (Telegram webhook, test harness, etc.) → `process_event_input()`
+2. ReAct agent created with available tools (classification, fetch, parse, save)
+3. Agent uses reasoning loop: Thought → Action → Observation → repeat
+4. Agent invokes tools as needed: classify → fetch (URLs) → parse → save to Notion
+5. Agent provides final reasoning and response with processing results
+6. Response returned to caller (Telegram, test harness, etc.)
 
 ### Current Architecture (Implemented)
-The system currently implements:
-- Input → Classify → Parse (text) → Save to Notion → Respond
-- Notion database with structured schema for events
-- Comprehensive error handling and status reporting
+**ReAct Agent System**:
+- Input → Agent Reasoning → Tool Selection → Action Execution → Notion Save → Response
+- Support for text, URLs, and image inputs (image processing via Claude vision)
+- MCP integration for enhanced web fetching and tool capabilities
+- Comprehensive error handling and fallback mechanisms
+
+**Legacy StateGraph Support**:
+- Original node-based system available via `--legacy` flag in test harness
+- Backward compatibility maintained for existing integrations
+- Gradual migration path for production systems
 
 ### Future Architecture Expansion
-The system is designed to expand into:
-- Input → Classify → Parse → Validate → Deduplicate → Enrich → Save to Notion → Respond
-- Additional input sources: web scraping, email, Instagram
-- Enhanced parsing: OCR for images, URL scraping, better event extraction
+The ReAct agent system enables easy expansion:
+- **Enhanced Tools**: Add validation, deduplication, enrichment tools to agent toolkit
+- **Multiple Agents**: Specialized agents for different input types or processing stages  
+- **MCP Ecosystem**: Leverage growing MCP tool ecosystem for web scraping, OCR, etc.
+- **Multi-modal**: Better image processing, audio transcription, document analysis
+- **Workflow Orchestration**: LangGraph for complex multi-agent workflows
 
 ## Development Patterns
 
-### LangGraph Node Development
-- **Node Structure**: Each node is a function that takes `EventState` and returns `EventState`
-- **Node Location**: Place nodes in `langgraph/nodes/` directory with `_node.py` suffix
-- **State Updates**: Always return the modified state object, don't mutate in place
-- **Import Pattern**: Import nodes in `main_graph.py` as `from langgraph.nodes import node_name`
+### ReAct Agent Tool Development  
+- **Tool Structure**: Use `@tool` decorator with type hints and comprehensive docstrings
+- **Tool Location**: Place tools in `langgraph/agents/tools/` directory with `_tool.py` suffix
+- **Error Handling**: Tools should return structured error information rather than raising exceptions
+- **Import Pattern**: Import tools in agent as `from .tools import tool_name`
+
+### Legacy Node Development (Deprecated)
+- **Legacy Support**: Original node-based system in `langgraph/nodes/` still available
+- **Migration Path**: Convert nodes to tools using `@tool` decorator pattern
+- **Backward Compatibility**: Use `--legacy` flag in test harness for old behavior
 
 ### Testing Strategy
-**Manual Testing** (current approach):
-- Use `test_run_graph.py` to test the LangGraph pipeline directly
-- Test different input types: text, URLs, and images
-- Verify state transformations through the pipeline
+**Agent Testing** (current approach):
+- Use `python test_url_parse.py` for comprehensive agent flow testing
+- Test different input types: URLs, text descriptions, structured events
+- Interactive mode: `python test_url_parse.py --interactive`
+- Legacy testing: `python test_url_parse.py --legacy` for old StateGraph behavior
 
-**Unit Testing** (recommended for expansion):
-- Test individual nodes in isolation: `test_classifier_node.py`
-- Test state object creation and validation: `test_event_state.py`
-- Test FastAPI endpoints separately from LangGraph logic
-- Use pytest framework when adding formal tests
+**Tool Testing** (recommended for development):
+- Test individual tools in isolation using LangChain tool testing patterns
+- Use `test_agent_flow()` function for end-to-end agent workflows
+- Verify tool invocation patterns and error handling
 
 **Integration Testing**:
-- Test end-to-end flow: Telegram webhook → LangGraph → response
-- Test with actual Telegram message payloads
-- Verify webhook setup and ngrok integration
+- Test end-to-end flow: Input → Agent → Tools → Notion → Response
+- Test with actual Telegram message payloads via webhook
+- Verify MCP integration and fallback mechanisms
 
 ### Code Organization
-- **State Objects**: Keep all shared state in `utils/state.py`
-- **Node Functions**: One file per node type in `langgraph/nodes/`
-- **Graph Assembly**: Main graph construction in `langgraph/main_graph.py`
-- **External Integrations**: Separate directories (e.g., `telegram-bot/`, future `notion/`)
+**New Agent Architecture**:
+- **Agent Classes**: Main agents in `langgraph/agents/` (e.g., `event_agent.py`)
+- **Tool Functions**: Individual tools in `langgraph/agents/tools/`
+- **MCP Integration**: MCP client and configuration in `langgraph/mcp/`
+- **Main Entry Point**: `langgraph/main_agent.py` for unified agent access
+
+**Legacy Components** (maintained for compatibility):
+- **State Objects**: `utils/state.py` for EventState and Telegram integration
+- **Node Functions**: `langgraph/nodes/` for original StateGraph approach
+- **Graph Assembly**: `langgraph/main_graph.py` for legacy graph construction
+
+**External Integrations**:
+- **Telegram Bot**: `telegram-bot/` directory
+- **Notion Integration**: `utils/notion_client.py` and tools
 - **Environment**: All secrets in `.env`, never commit tokens
 
 ### Error Handling Patterns
-- **Node Failures**: Nodes should handle their own errors and update state accordingly
-- **API Failures**: Telegram/external API calls should have retry logic and fallbacks
-- **Invalid Input**: Classifier should handle unknown/malformed input gracefully
-- **State Validation**: Use Pydantic validation in EventState for type safety
+**Agent-Level Errors**:
+- ReAct agents handle tool failures gracefully with reasoning
+- Agents provide detailed error context and recovery suggestions
+- MCP integration includes automatic fallback to requests/BeautifulSoup
+
+**Tool-Level Errors**:
+- Tools return structured error dictionaries rather than raising exceptions
+- Include specific error types for different failure modes (API, network, validation)
+- Provide actionable error messages for debugging and user feedback
+
+**System-Level Errors**:
+- Environment validation at startup (API keys, database connections)
+- Graceful degradation when optional services (MCP, Notion) unavailable
+- Comprehensive logging for debugging and monitoring

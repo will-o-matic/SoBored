@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Request
 from pydantic import BaseModel
-from langgraph.main_graph import app as langgraph_app
+from langgraph.main_agent import process_event_input
 from utils.state import EventState
 import os
 from dotenv import load_dotenv
@@ -29,24 +29,28 @@ async def handle_webhook(payload: TelegramMessage):
         input_type = None  # Let LangGraph classify text/URLs
         raw_input = text
 
-    # Prepare state for LangGraph
-    state = EventState(
-        raw_input=raw_input,
-        input_type=input_type,
-        source="telegram"
-    )
-    
     try:
-        result = langgraph_app.invoke(state)
+        # Use the new agent system instead of the old StateGraph
+        result = process_event_input(
+            raw_input=raw_input,
+            source="telegram",
+            input_type=input_type
+        )
         
-        # Get the formatted response message from the pipeline
-        response_message = result.get("response_message", "I processed your message but couldn't generate a response.")
-        
-        # Handle error state
-        if result.get("error"):
+        # Extract response from agent output
+        if result.get("success"):
+            agent_output = result.get("agent_output", "")
+            # Create a user-friendly response from the agent output
+            if "successfully saved to Notion" in agent_output.lower():
+                response_message = "✅ Event processed and saved to Notion!"
+            elif "failed" in agent_output.lower() or "error" in agent_output.lower():
+                response_message = "⚠️ I processed your message but encountered some issues. Check the details in Notion."
+            else:
+                response_message = f"📝 Processed your event: {agent_output[:200]}..."
+        else:
             error_msg = result.get("error", "Unknown error")
-            print(f"LangGraph error: {error_msg}")
-            response_message = "Sorry, I encountered an error processing your message. Please try again."
+            print(f"Agent error: {error_msg}")
+            response_message = "❌ Sorry, I encountered an error processing your message. Please try again."
         
         # Respond using Telegram sendMessage
         from telegram import Bot
