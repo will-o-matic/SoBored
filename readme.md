@@ -192,6 +192,10 @@ python -m utils.notion_dev_utils create-database
 # Query pages in a database
 python -m utils.notion_dev_utils query-pages <database_id> --limit 10
 
+# List pages from a specific database or search all accessible pages
+python -m utils.notion_dev_utils list-pages --database-id <database_id> --limit 10
+python -m utils.notion_dev_utils list-pages --limit 20  # Search all accessible pages
+
 # Export database contents to JSON or CSV
 python -m utils.notion_dev_utils export-database <database_id> --format json
 python -m utils.notion_dev_utils export-database <database_id> --format csv
@@ -216,7 +220,12 @@ python -m utils.notion_dev_utils clean-database <database_id>
 **Testing and cleanup:**
 1. Use `clean-database --dry-run` to see what would be deleted
 2. Use `export-database` to backup before cleaning
-3. Use `query-pages` to verify operations
+3. Use `query-pages` or `list-pages` to verify operations
+
+**Page management:**
+1. Use `list-pages` to search all accessible pages across workspaces
+2. Use `list-pages --database-id <id>` to list pages from a specific database
+3. Use `query-pages` for detailed database-specific page queries
 
 ---
 ## Tech Stack

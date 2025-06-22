@@ -242,6 +242,73 @@ class NotionDevUtils:
             print(f"❌ Failed to query pages: {error}")
             return []
     
+    def list_pages(self, database_id: Optional[str] = None, limit: int = 10) -> List[Dict[str, Any]]:
+        """List pages from a specific database or search all accessible pages."""
+        if database_id:
+            print(f"📄 Listing pages from database: {database_id}")
+            # Use the existing query_pages method for database-specific queries
+            return self.query_pages(database_id, limit)
+        else:
+            print("📄 Searching all accessible pages...")
+            
+            try:
+                response = self.notion.client.search(
+                    filter={"property": "object", "value": "page"},
+                    page_size=limit
+                )
+                
+                pages = response.get('results', [])
+                
+                if not pages:
+                    print("No pages found")
+                    return []
+                
+                print(f"\nFound {len(pages)} page(s) across all accessible workspaces:")
+                print("-" * 80)
+                
+                for page in pages:
+                    # Try to get title from properties or title field
+                    title = "Untitled"
+                    
+                    # Check if it's a database page with properties
+                    if page.get('properties'):
+                        properties = page.get('properties', {})
+                        for prop_name, prop_value in properties.items():
+                            if prop_value.get('type') == 'title':
+                                title_array = prop_value.get('title', [])
+                                if title_array:
+                                    title = title_array[0].get('plain_text', 'Untitled')
+                                break
+                    # Check if it's a regular page with title
+                    elif page.get('properties') is None and page.get('title'):
+                        title_array = page.get('title', [])
+                        if title_array:
+                            title = title_array[0].get('plain_text', 'Untitled')
+                    
+                    # Get parent info
+                    parent = page.get('parent', {})
+                    parent_type = parent.get('type', 'unknown')
+                    parent_info = f"{parent_type}"
+                    if parent_type == 'database_id':
+                        parent_info = f"database ({parent.get('database_id', '')[:8]}...)"
+                    elif parent_type == 'page_id':
+                        parent_info = f"page ({parent.get('page_id', '')[:8]}...)"
+                    elif parent_type == 'workspace':
+                        parent_info = "workspace"
+                    
+                    print(f"Title: {title}")
+                    print(f"ID: {page['id']}")
+                    print(f"Parent: {parent_info}")
+                    print(f"URL: {page['url']}")
+                    print(f"Created: {page['created_time']}")
+                    print("-" * 80)
+                
+                return pages
+                
+            except APIResponseError as error:
+                print(f"❌ Failed to list pages: {error}")
+                return []
+    
     def clean_database(self, database_id: str, dry_run: bool = False) -> bool:
         """Remove all pages from a database."""
         if dry_run:
@@ -386,6 +453,8 @@ Examples:
   python -m utils.notion_dev_utils database-info abc123
   python -m utils.notion_dev_utils create-database
   python -m utils.notion_dev_utils query-pages abc123 --limit 5
+  python -m utils.notion_dev_utils list-pages --database-id abc123 --limit 5
+  python -m utils.notion_dev_utils list-pages --limit 20
   python -m utils.notion_dev_utils clean-database abc123 --dry-run
   python -m utils.notion_dev_utils export-database abc123 --format csv
         """
@@ -410,6 +479,11 @@ Examples:
     query_parser = subparsers.add_parser('query-pages', help='Query pages in a database')
     query_parser.add_argument('database_id', help='Database ID')
     query_parser.add_argument('--limit', type=int, default=10, help='Maximum number of pages to return')
+    
+    # List pages command
+    list_parser = subparsers.add_parser('list-pages', help='List pages from a database or search all accessible pages')
+    list_parser.add_argument('--database-id', help='Database ID (optional - if not provided, searches all accessible pages)')
+    list_parser.add_argument('--limit', type=int, default=10, help='Maximum number of pages to return')
     
     # Clean database command
     clean_parser = subparsers.add_parser('clean-database', help='Remove all pages from a database')
@@ -450,6 +524,9 @@ Examples:
     
     elif args.command == 'query-pages':
         utils.query_pages(args.database_id, args.limit)
+    
+    elif args.command == 'list-pages':
+        utils.list_pages(getattr(args, 'database_id', None), args.limit)
     
     elif args.command == 'clean-database':
         utils.clean_database(args.database_id, args.dry_run)
