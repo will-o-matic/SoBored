@@ -205,12 +205,42 @@ python -m utils.notion_dev_utils clean-database <database_id> --dry-run
 python -m utils.notion_dev_utils clean-database <database_id>
 ```
 
+### URL Parse Test Harness
+
+For testing URL parsing flow without Notion persistence:
+
+```bash
+# Test a single URL
+python test_url_parse.py "https://eventbrite.com/some-event"
+
+# Interactive mode for testing multiple URLs
+python test_url_parse.py --interactive
+
+# Verbose output with full state inspection
+python test_url_parse.py "https://example.com" --verbose
+
+# JSON output for scripting
+python test_url_parse.py "https://example.com" --json
+```
+
+The URL test harness runs only the URL-specific nodes:
+- **classifier**: Detects if input is a URL
+- **url_fetcher**: Fetches webpage content 
+- **url_parser**: Extracts event details using Claude API
+
+Perfect for debugging webpage parsing without creating Notion entries.
+
 ### Common Development Workflows
 
 **Setting up a new environment:**
 1. Run `python -m utils.notion_dev_utils validate-token` to check your token
 2. Run `python -m utils.notion_dev_utils create-database` to create your events database
 3. Add the database ID to your `.env` file
+
+**Testing URL parsing:**
+1. Use `python test_url_parse.py --interactive` to test multiple URLs
+2. Check parsing confidence scores and extracted event details
+3. Use `--verbose` to debug parsing issues
 
 **Debugging Notion issues:**
 1. Use `validate-token` to verify authentication

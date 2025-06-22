@@ -26,10 +26,26 @@ def fetch_url_content(state: EventState) -> Dict[str, Any]:
         
         url = url_match.group(0)
         
-        # Import the MCP fetch function
+        # Try to use MCP fetch if available
         try:
-            from mcp import fetch
-        except ImportError:
+            # In Claude Code environment, MCP tools may be available as globals
+            if 'mcp__fetch__fetch' in globals():
+                mcp_fetch = globals()['mcp__fetch__fetch']
+                result = mcp_fetch(url=url, max_length=5000)
+                
+                # Extract title from the fetched content
+                title_match = re.search(r'<title[^>]*>([^<]+)</title>', result, re.IGNORECASE)
+                webpage_title = title_match.group(1).strip() if title_match else "Untitled"
+                
+                return {
+                    "webpage_content": result,
+                    "webpage_title": webpage_title,
+                    "fetch_status": "success"
+                }
+            else:
+                raise ImportError("MCP fetch not available")
+                
+        except Exception:
             # Fallback: try to use requests or other library
             try:
                 import requests
@@ -70,28 +86,6 @@ def fetch_url_content(state: EventState) -> Dict[str, Any]:
                     "fetch_status": "failed",
                     "fetch_error": f"Fallback fetch failed: {str(e)}"
                 }
-        
-        # Use MCP fetch if available
-        try:
-            # Note: This is a placeholder for MCP integration
-            # In actual implementation, we would use the MCP fetch tool
-            result = fetch.fetch(url=url, max_length=5000)
-            
-            # Extract title from the fetched content
-            title_match = re.search(r'<title[^>]*>([^<]+)</title>', result.content, re.IGNORECASE)
-            webpage_title = title_match.group(1).strip() if title_match else "Untitled"
-            
-            return {
-                "webpage_content": result.content,
-                "webpage_title": webpage_title,
-                "fetch_status": "success"
-            }
-            
-        except Exception as e:
-            return {
-                "fetch_status": "failed",
-                "fetch_error": f"MCP fetch failed: {str(e)}"
-            }
         
     except Exception as e:
         return {

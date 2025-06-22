@@ -64,21 +64,3 @@ class EventState(BaseModel):
         default=None,
         description="URL to the created Notion page"
     )
-    
-    # Webpage fetching fields
-    webpage_content: Optional[str] = Field(
-        default=None,
-        description="Fetched and cleaned webpage content"
-    )
-    webpage_title: Optional[str] = Field(
-        default=None,
-        description="Title extracted from the webpage"
-    )
-    fetch_status: Optional[str] = Field(
-        default=None,
-        description="Status of webpage fetch operation: 'success', 'failed', 'skipped'"
-    )
-    fetch_error: Optional[str] = Field(
-        default=None,
-        description="Error message if webpage fetch fails"
-    )
