@@ -20,10 +20,7 @@ This project sets up a Telegram bot that receives user messages, classifies the 
 - Python 3.9+
 - A Telegram bot token from [@BotFather](https://t.me/BotFather)
 - A Notion integration and database (see Notion Setup below)
-- `ngrok` installed:
-  - **macOS**: `brew install ngrok`
-  - **Windows**: `choco install ngrok` or download from https://ngrok.com
-  - **WSL/Linux**: See installation instructions in the WSL setup section below
+- `ngrok` installed (`brew install ngrok`, `choco install ngrok`, or download from https://ngrok.com)
 
 ### 🪟 VS Code + WSL Setup (Windows Users)
 
@@ -37,7 +34,7 @@ For the best development experience on Windows, use VS Code with the Remote-WSL 
 
 2. **Clone Project to WSL Filesystem:**
    ```bash
-   # In WSL terminal, clone to your home directory for better performance
+   # In WSL terminal, clone to your home directory (works best for WSL and Claude Code)
    cd ~
    git clone https://github.com/your-username/SoBored.git
    cd SoBored
@@ -50,6 +47,13 @@ For the best development experience on Windows, use VS Code with the Remote-WSL 
    ```
    This will open VS Code in Remote-WSL mode with the project loaded.
 
+#### Python Environment Setup
+```bash
+# Create virtual environment in WSL filesystem
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
 
 #### Install ngrok in WSL
 ```bash
@@ -93,20 +97,11 @@ cd ~/SoBored
 
 ---
 
-### 🗃️ Notion Setup
+### 📦 Install Dependencies
 
-1. Create a Notion integration at https://www.notion.com/my-integrations
-2. Copy the integration token (you'll add this to `.env` in the next step)
-3. Create or select a Notion page where you want your events database
-4. Share the page with your integration (Share → Add connections)
-
-### 📦 Install Dependencies & Configuration
-
-Set up your Python environment and install required packages:
+Create a virtual environment and install required packages:
 
 ```bash
-python3 -m venv venv
-source venv/bin/activate
 pip install -r requirements.txt
 ```
 
@@ -120,48 +115,48 @@ NOTION_DATABASE_ID=your-notion-database-id-here
 
 Make sure .env is listed in .gitignore to avoid committing secrets.
 
-Complete the Notion database setup:
-```bash
-python test_run_graph.py
-```
-Follow the prompts to create your events database and copy the database ID to your `.env` file as `NOTION_DATABASE_ID`.
-
-### 🚀 Running the Application
-
 Start the local webhook server on port 8000:
 
-```bash
 uvicorn telegram-bot.main:app --reload --port 8000
-```
 
-In a separate terminal, expose with ngrok:
+In a separate terminal:
 
-```bash
 ngrok http 8000
-```
 
 Copy the HTTPS forwarding URL (e.g. https://abc123.ngrok.io).
 
 Set your webhook using your bot token and ngrok URL:
 
-```
 https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook?url=https://abc123.ngrok.io/telegram/webhook
-```
 
 Replace:
-- `<YOUR_BOT_TOKEN>` with your real token
-- `https://abc123.ngrok.io` with your actual ngrok URL
+
+    <YOUR_BOT_TOKEN> with your real token
+
+    https://abc123.ngrok.io with your actual ngrok URL
 
 A successful response will look like:
-```json
+
 {
   "ok": true,
   "result": true,
   "description": "Webhook was set"
 }
-```
 
-### 🧪 Testing
+### 🗃️ Notion Setup
+
+1. Create a Notion integration at https://www.notion.com/my-integrations
+2. Copy the integration token to your `.env` file as `NOTION_TOKEN`
+3. Create or select a Notion page where you want your events database
+4. Share the page with your integration (Share → Add connections)
+5. Run the database setup:
+   ```bash
+   python test_run_graph.py
+   ```
+6. Follow the prompts to create your events database
+7. Copy the database ID to your `.env` file as `NOTION_DATABASE_ID`
+
+🧪 Test It!
 
 Send your bot a message:
 
@@ -173,6 +168,57 @@ Send your bot a message:
 
 You should see FastAPI and ngrok logs updating as requests come in.
 
+## 🛠️ Development Utilities
+
+The project includes a comprehensive utility script for common Notion API tasks during development.
+
+### Notion Development Utilities
+
+Use the `notion_dev_utils.py` script for database management and debugging:
+
+```bash
+# Validate your Notion token and permissions
+python -m utils.notion_dev_utils validate-token
+
+# List all databases accessible to your integration
+python -m utils.notion_dev_utils list-databases
+
+# Get detailed information about a specific database
+python -m utils.notion_dev_utils database-info <database_id>
+
+# Create a new database interactively
+python -m utils.notion_dev_utils create-database
+
+# Query pages in a database
+python -m utils.notion_dev_utils query-pages <database_id> --limit 10
+
+# Export database contents to JSON or CSV
+python -m utils.notion_dev_utils export-database <database_id> --format json
+python -m utils.notion_dev_utils export-database <database_id> --format csv
+
+# Clean up database (remove all pages) - useful for testing
+python -m utils.notion_dev_utils clean-database <database_id> --dry-run
+python -m utils.notion_dev_utils clean-database <database_id>
+```
+
+### Common Development Workflows
+
+**Setting up a new environment:**
+1. Run `python -m utils.notion_dev_utils validate-token` to check your token
+2. Run `python -m utils.notion_dev_utils create-database` to create your events database
+3. Add the database ID to your `.env` file
+
+**Debugging Notion issues:**
+1. Use `validate-token` to verify authentication
+2. Use `list-databases` to see what's accessible
+3. Use `database-info` to inspect schema and properties
+
+**Testing and cleanup:**
+1. Use `clean-database --dry-run` to see what would be deleted
+2. Use `export-database` to backup before cleaning
+3. Use `query-pages` to verify operations
+
+---
 ## Tech Stack
 
 | Layer | Technology |

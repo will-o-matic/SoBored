@@ -23,6 +23,18 @@ ngrok http 8000
 python test_run_graph.py
 ```
 
+### Development Utilities
+```bash
+# Notion API utilities for development and debugging
+python -m utils.notion_dev_utils validate-token      # Check token and permissions
+python -m utils.notion_dev_utils list-databases      # List accessible databases
+python -m utils.notion_dev_utils database-info <id>  # Get database details
+python -m utils.notion_dev_utils create-database     # Create new database
+python -m utils.notion_dev_utils query-pages <id>    # List pages in database
+python -m utils.notion_dev_utils export-database <id> --format csv  # Export data
+python -m utils.notion_dev_utils clean-database <id> --dry-run      # Test cleanup
+```
+
 ### Environment Setup
 - Create `.env` file with required tokens:
   ```
