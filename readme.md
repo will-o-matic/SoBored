@@ -320,7 +320,7 @@ Each step is a LangGraph node (LangChain tools, custom code, or API call). All s
 | --------------------------------------- | ------------------------------------------------------ |
 | Flyer image                             | OCR → parse → save → reply: "Added *Live Jazz at 8pm*" |
 | Text: "Art show at Dolores Park on Sat" | NLP → save → reply with confirmation                   |
-| URL                                     | Scrape → parse → validate → save                       |
+| URL                                     | Scrape → parse → validate → save → reply with confirmation  |
 
 ---
 
@@ -334,6 +334,7 @@ Each step is a LangGraph node (LangChain tools, custom code, or API call). All s
 * [ ] Add enrichment: venue details, map links
 * [ ] Web UI with calendar + filters
 * [ ] Add email/Instagram input support
+* [ ] Event search flow: user inputs event name -> web fetch known sources + web search engines -> confirm with user via telegram -> validate -> save -> confirm to user
 
 ---
 
