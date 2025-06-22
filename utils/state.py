@@ -46,3 +46,21 @@ class EventState(BaseModel):
         default=None,
         description="Formatted response message for the user"
     )
+    
+    # Notion integration fields
+    notion_page_id: Optional[str] = Field(
+        default=None,
+        description="ID of the created Notion page"
+    )
+    notion_save_status: Optional[str] = Field(
+        default=None,
+        description="Status of Notion save operation: 'success', 'failed', 'skipped'"
+    )
+    notion_error: Optional[str] = Field(
+        default=None,
+        description="Error message if Notion save fails"
+    )
+    notion_url: Optional[str] = Field(
+        default=None,
+        description="URL to the created Notion page"
+    )

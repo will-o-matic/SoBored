@@ -1,6 +1,10 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.  Use Context7 for up-to-date documentation.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository. Use Context7 for up-to-date documentation.
+
+## Project Location
+- **Recommended**: WSL filesystem at `~/SoBored` for Windows users
+- **Legacy**: Windows filesystem at `/mnt/c/users/will/documents/codingprojects/SoBored` (slower, permission issues)
 
 ## Development Commands
 
@@ -20,8 +24,14 @@ python test_run_graph.py
 ```
 
 ### Environment Setup
-- Create `.env` file with `TELEGRAM_BOT_TOKEN=your-token-here`
+- Create `.env` file with required tokens:
+  ```
+  TELEGRAM_BOT_TOKEN=your-token-here
+  NOTION_TOKEN=your-notion-integration-token
+  NOTION_DATABASE_ID=your-notion-database-id
+  ```
 - Set Telegram webhook: `https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://abc123.ngrok.io/telegram/webhook`
+- Set up Notion integration and database using `python test_run_graph.py`
 
 ## Architecture Overview
 
@@ -30,12 +40,14 @@ This is a smart event aggregator using **LangGraph** for content classification 
 ### Core Components
 
 **LangGraph Pipeline** (`langgraph/main_graph.py`):
-- Uses `StateGraph(EventState)` with a single "classifier" node
-- Entry point and finish point both at classifier (MVP setup)
+- Uses `StateGraph(EventState)` with classifier, parser, notion_saver, and responder nodes
+- Flow: Input → Classify → Parse (text only) → Save to Notion → Respond
 - Compiles to `app` that can be invoked with EventState
 
 **State Management** (`utils/state.py`):
-- `EventState` is a Pydantic model with `input_type`, `raw_input`, and `source` fields
+- `EventState` is a Pydantic model with classification, parsing, and Notion fields
+- Core fields: `input_type`, `raw_input`, `source`, `event_*` parsed fields
+- Notion fields: `notion_page_id`, `notion_save_status`, `notion_error`, `notion_url`
 - Shared state object flows through the entire LangGraph pipeline
 
 **Classification Logic** (`langgraph/nodes/classifier_node.py`):
@@ -49,18 +61,39 @@ This is a smart event aggregator using **LangGraph** for content classification 
 - Invokes LangGraph app and responds with classification result
 - Uses `python-telegram-bot` library for sending responses
 
+**Notion Integration** (`utils/notion_client.py`):
+- `NotionClientWrapper` class handles all Notion API interactions
+- Database creation, page creation, querying, and error handling
+- `create_events_database_schema()` defines structured database schema
+- Comprehensive error handling for permissions, rate limits, and connectivity
+
+**Save to Notion Node** (`langgraph/nodes/save_to_notion_node.py`):
+- `save_to_notion()` function creates pages in Notion database
+- Maps EventState fields to Notion page properties
+- Handles different input types and generates fallback titles
+- Updates state with save status and Notion URL
+
 ### Data Flow
 1. Telegram webhook receives message → FastAPI endpoint
 2. Message converted to EventState (raw_input, input_type, source)
 3. EventState passed to LangGraph app.invoke()
 4. Classifier node processes and updates input_type
-5. Result sent back to Telegram chat
+5. Parser node extracts event details (text inputs only)
+6. Notion saver creates database entry
+7. Responder formats reply with Notion status
+8. Result sent back to Telegram chat
 
-### Future Architecture (from README)
-The system is designed to expand into a full event processing pipeline:
+### Current Architecture (Implemented)
+The system currently implements:
+- Input → Classify → Parse (text) → Save to Notion → Respond
+- Notion database with structured schema for events
+- Comprehensive error handling and status reporting
+
+### Future Architecture Expansion
+The system is designed to expand into:
 - Input → Classify → Parse → Validate → Deduplicate → Enrich → Save to Notion → Respond
 - Additional input sources: web scraping, email, Instagram
-- Notion database storage with fields: Title, Date/Time, Location, Description, etc.
+- Enhanced parsing: OCR for images, URL scraping, better event extraction
 
 ## Development Patterns
 

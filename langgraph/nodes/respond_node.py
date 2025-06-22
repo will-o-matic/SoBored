@@ -1,7 +1,7 @@
 from typing import Dict, Any
 from utils.state import EventState
 
-def respond_to_user(state: EventState) -> Dict[str, Any]:
+def respond_to_user(state: EventState) -> EventState:
     """
     Generate a formatted response message for the user based on parsed event details.
     
@@ -9,27 +9,49 @@ def respond_to_user(state: EventState) -> Dict[str, Any]:
         state: Current EventState with parsed event information
         
     Returns:
-        Dict containing the response message
+        Updated EventState with response message
     """
     try:
         confidence = state.parsing_confidence or 0.0
         
         # Handle error states
         if state.error:
-            return {"response_message": "Sorry, I encountered an error processing your message. Please try again."}
+            state.response_message = "Sorry, I encountered an error processing your message. Please try again."
+            return state
         
         # Handle non-text inputs
         if state.input_type != "text":
+            response_message = ""
             if state.input_type == "url":
-                return {"response_message": "I see you shared a URL! I'm not set up to process links yet, but I'll learn soon."}
+                response_message = "I see you shared a URL!"
             elif state.input_type == "image":
-                return {"response_message": "Nice image! I can't process images for events yet, but that feature is coming."}
+                response_message = "Nice image! I've captured it for processing."
             else:
-                return {"response_message": "I'm not sure how to process that type of content yet."}
+                response_message = "I've captured your content for processing."
+            
+            # Add Notion save status
+            if state.notion_save_status == "success":
+                response_message += f" ✅ Saved to Notion: {state.notion_url}"
+            elif state.notion_save_status == "failed":
+                response_message += f" ❌ Failed to save to Notion: {state.notion_error}"
+            elif state.notion_save_status == "skipped":
+                response_message += " (Skipped saving to Notion)"
+            
+            state.response_message = response_message
+            return state
         
         # Handle low confidence parsing
         if confidence < 0.3:
-            return {"response_message": "I couldn't find clear event details in your message. Try including things like event name, date, and location!"}
+            response_message = "I couldn't find clear event details in your message. Try including things like event name, date, and location!"
+            
+            # Add Notion save status even for low confidence
+            if state.notion_save_status == "success":
+                response_message += f" ✅ Saved to Notion anyway: {state.notion_url}"
+            elif state.notion_save_status == "failed":
+                response_message += f" ❌ Failed to save to Notion: {state.notion_error}"
+            
+            state.response_message = response_message
+            return state
         
         # Build response based on what we found
         response_parts = []
@@ -56,11 +78,17 @@ def respond_to_user(state: EventState) -> Dict[str, Any]:
         if confidence < 0.7:
             response_parts.append(f"\n(Confidence: {confidence:.1%} - please double-check these details!)")
         
-        # Add next steps hint
-        response_parts.append("\n💡 Next: I'll save this to your Notion database soon!")
+        # Add Notion save status
+        if state.notion_save_status == "success":
+            response_parts.append(f"\n✅ Saved to Notion: {state.notion_url}")
+        elif state.notion_save_status == "failed":
+            response_parts.append(f"\n❌ Failed to save to Notion: {state.notion_error}")
+        elif state.notion_save_status == "skipped":
+            response_parts.append("\n⏭️ Skipped saving to Notion")
         
-        response_message = "\n".join(response_parts)
-        return {"response_message": response_message}
+        state.response_message = "\n".join(response_parts)
+        return state
         
     except Exception as e:
-        return {"response_message": f"Error generating response: {str(e)}"}
+        state.response_message = f"Error generating response: {str(e)}"
+        return state
