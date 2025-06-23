@@ -30,7 +30,7 @@ async def handle_webhook(payload: TelegramMessage):
         raw_input = text
 
     try:
-        # Use the new agent system instead of the old StateGraph
+        # Process the event using the ReAct agent system
         result = process_event_input(
             raw_input=raw_input,
             source="telegram",
