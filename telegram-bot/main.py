@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Request
 from pydantic import BaseModel
 from langgraph.main_agent import process_event_input
+from langgraph.observability.structured_logging import TelegramAgentLogger
 from utils.state import EventState
 import os
 from dotenv import load_dotenv
@@ -23,6 +24,9 @@ async def handle_webhook(payload: TelegramMessage):
     # Extract user ID for Notion integration
     user_id = str(chat_id)  # Use chat_id as user_id for Telegram
     
+    # Initialize Telegram-specific logger
+    telegram_logger = TelegramAgentLogger(user_id=user_id, chat_id=str(chat_id))
+    
     print("received:", message)
 
     # Prepare raw input for LangGraph classification
@@ -33,40 +37,72 @@ async def handle_webhook(payload: TelegramMessage):
         input_type = None  # Let LangGraph classify text/URLs
         raw_input = text
 
-    try:
-        # Process the event using the ReAct agent system
-        result = process_event_input(
-            raw_input=raw_input,
-            source="telegram",
-            input_type=input_type,
-            user_id=user_id
-        )
-        
-        # Extract response from agent output
-        if result.get("success"):
-            agent_output = result.get("agent_output", "")
-            # Create a user-friendly response from the agent output
-            if "successfully saved to Notion" in agent_output.lower():
-                response_message = "✅ Event processed and saved to Notion!"
-            elif "failed" in agent_output.lower() or "error" in agent_output.lower():
-                response_message = "⚠️ I processed your message but encountered some issues. Check the details in Notion."
+    # Use context manager for tracking message processing
+    with telegram_logger.track_message_processing(raw_input) as session_id:
+        try:
+            # Process the event using the ReAct agent system
+            result = process_event_input(
+                raw_input=raw_input,
+                source="telegram",
+                input_type=input_type,
+                user_id=user_id
+            )
+            
+            # Extract response from agent output
+            if result.get("success"):
+                agent_output = result.get("agent_output", "")
+                # Create a user-friendly response from the agent output
+                if "successfully saved to Notion" in agent_output.lower():
+                    response_message = "✅ Event processed and saved to Notion!"
+                elif "failed" in agent_output.lower() or "error" in agent_output.lower():
+                    response_message = "⚠️ I processed your message but encountered some issues. Check the details in Notion."
+                else:
+                    response_message = f"📝 Processed your event: {agent_output[:200]}..."
+                
+                # Log successful Telegram event
+                telegram_logger.log_telegram_event(
+                    event_type="message_processed",
+                    user_id=user_id,
+                    chat_id=str(chat_id),
+                    message=raw_input,
+                    success=True
+                )
             else:
-                response_message = f"📝 Processed your event: {agent_output[:200]}..."
-        else:
-            error_msg = result.get("error", "Unknown error")
-            print(f"Agent error: {error_msg}")
-            response_message = "❌ Sorry, I encountered an error processing your message. Please try again."
-        
-        # Respond using Telegram sendMessage
-        from telegram import Bot
-        bot = Bot(token=TELEGRAM_BOT_TOKEN)
-        await bot.send_message(chat_id=chat_id, text=response_message, parse_mode="Markdown")
-        
-    except Exception as e:
-        print(f"Error processing message: {e}")
-        # Send error response to user
-        from telegram import Bot
-        bot = Bot(token=TELEGRAM_BOT_TOKEN)
-        await bot.send_message(chat_id=chat_id, text="Sorry, I encountered an error processing your message.")
+                error_msg = result.get("error", "Unknown error")
+                print(f"Agent error: {error_msg}")
+                response_message = "❌ Sorry, I encountered an error processing your message. Please try again."
+                
+                # Log failed Telegram event
+                telegram_logger.log_telegram_event(
+                    event_type="message_processed",
+                    user_id=user_id,
+                    chat_id=str(chat_id),
+                    message=raw_input,
+                    success=False,
+                    error=error_msg
+                )
+            
+            # Respond using Telegram sendMessage
+            from telegram import Bot
+            bot = Bot(token=TELEGRAM_BOT_TOKEN)
+            await bot.send_message(chat_id=chat_id, text=response_message, parse_mode="Markdown")
+            
+        except Exception as e:
+            print(f"Error processing message: {e}")
+            
+            # Log exception
+            telegram_logger.log_telegram_event(
+                event_type="webhook_error",
+                user_id=user_id,
+                chat_id=str(chat_id),
+                message=raw_input,
+                success=False,
+                error=str(e)
+            )
+            
+            # Send error response to user
+            from telegram import Bot
+            bot = Bot(token=TELEGRAM_BOT_TOKEN)
+            await bot.send_message(chat_id=chat_id, text="Sorry, I encountered an error processing your message.")
 
     return {"ok": True}

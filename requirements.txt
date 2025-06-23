@@ -12,3 +12,5 @@ notion-client
 requests
 beautifulsoup4
 pytz
+langsmith
+structlog

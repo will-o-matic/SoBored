@@ -13,6 +13,8 @@ from langchain_anthropic import ChatAnthropic
 
 from .tools import classify_input, fetch_url_content, parse_url_content, save_to_notion
 from ..mcp import initialize_mcp_for_agent
+from ..observability.langsmith_config import create_langsmith_config
+from ..observability.structured_logging import ReActAgentLogger
 
 
 class EventProcessingAgent:
@@ -40,6 +42,10 @@ class EventProcessingAgent:
             api_key=api_key,
             temperature=0.1
         )
+        
+        # Initialize observability
+        self.logger = ReActAgentLogger("event_processor")
+        self.langsmith_config = create_langsmith_config()
         
         # Available tools for the agent
         self.tools = [
@@ -133,6 +139,10 @@ Thought:{agent_scratchpad}"""
         Returns:
             Dict containing processing results and agent reasoning
         """
+        import time
+        
+        start_time = time.time()
+        
         try:
             # Prepare the input for the agent
             user_info = f"\nUser ID: {user_id}" if user_id else ""
@@ -140,23 +150,48 @@ Thought:{agent_scratchpad}"""
                 "input": f"Process this event input:\n\nRaw Input: {raw_input}\nSource: {source}\nPre-classified Type: {input_type or 'Not specified'}{user_info}\n\nPlease classify, process, and save this event information to Notion if it contains event details. Include the user_id in the event data when saving to Notion."
             }
             
-            # Run the agent executor
-            result = self.agent_executor.invoke(agent_input)
+            # Run the agent executor with LangSmith configuration
+            config = self.langsmith_config.copy()
+            if config:
+                print("[AGENT] Running with LangSmith tracing enabled")
+            
+            result = self.agent_executor.invoke(agent_input, config=config)
+            
+            # Log successful execution
+            duration_ms = (time.time() - start_time) * 1000
+            self.logger.log_agent_invocation_end(
+                user_id=user_id,
+                source=source,
+                success=True,
+                duration_ms=duration_ms
+            )
             
             return {
                 "success": True,
                 "raw_input": raw_input,
                 "source": source,
                 "agent_output": result.get("output", ""),
-                "reasoning_steps": self._extract_reasoning_steps(result)
+                "reasoning_steps": self._extract_reasoning_steps(result),
+                "duration_ms": duration_ms
             }
             
         except Exception as e:
+            # Log error execution
+            duration_ms = (time.time() - start_time) * 1000
+            self.logger.log_agent_invocation_end(
+                user_id=user_id,
+                source=source,
+                success=False,
+                error=str(e),
+                duration_ms=duration_ms
+            )
+            
             return {
                 "success": False,
                 "error": str(e),
                 "raw_input": raw_input,
-                "source": source
+                "source": source,
+                "duration_ms": duration_ms
             }
     
     def _extract_reasoning_steps(self, result: Dict[str, Any]) -> List[Dict[str, str]]:

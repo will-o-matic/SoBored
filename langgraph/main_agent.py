@@ -8,9 +8,15 @@ from dotenv import load_dotenv
 
 from .agents.event_agent import create_event_agent
 from .agents.dry_run_agent import create_dry_run_event_agent
+from .observability.langsmith_config import configure_langsmith, log_agent_session_start, log_agent_session_end
+from .observability.structured_logging import ReActAgentLogger
 
 # Load environment variables
 load_dotenv()
+
+# Configure observability
+configure_langsmith()
+agent_logger = ReActAgentLogger()
 
 
 def create_event_processor() -> Any:
@@ -61,6 +67,20 @@ def process_event_input(
     Returns:
         Dict containing processing results
     """
+    import time
+    
+    # Start session logging
+    start_time = time.time()
+    session_id = f"{source}_{user_id or 'anon'}_{int(start_time)}"
+    
+    log_agent_session_start(user_id=user_id, source=source)
+    agent_logger.log_agent_invocation_start(
+        user_id=user_id,
+        source=source,
+        raw_input=raw_input,
+        session_id=session_id
+    )
+    
     try:
         # Create the appropriate agent (regular or dry-run)
         if dry_run:
@@ -73,14 +93,40 @@ def process_event_input(
         # Process the input
         result = agent.process_event(raw_input, source, input_type, user_id)
         
+        # Log successful completion
+        duration_ms = (time.time() - start_time) * 1000
+        log_agent_session_end(user_id=user_id, source=source, success=True)
+        agent_logger.log_agent_invocation_end(
+            user_id=user_id,
+            source=source,
+            success=True,
+            duration_ms=duration_ms,
+            session_id=session_id
+        )
+        
         return result
         
     except Exception as e:
+        # Log error
+        duration_ms = (time.time() - start_time) * 1000
+        error_msg = str(e)
+        
+        log_agent_session_end(user_id=user_id, source=source, success=False, error=error_msg)
+        agent_logger.log_agent_invocation_end(
+            user_id=user_id,
+            source=source,
+            success=False,
+            error=error_msg,
+            duration_ms=duration_ms,
+            session_id=session_id
+        )
+        
         return {
             "success": False,
-            "error": str(e),
+            "error": error_msg,
             "raw_input": raw_input,
-            "source": source
+            "source": source,
+            "session_id": session_id
         }
 
 

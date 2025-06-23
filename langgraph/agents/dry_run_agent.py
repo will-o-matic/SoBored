@@ -13,6 +13,8 @@ from langchain_anthropic import ChatAnthropic
 
 from .tools import classify_input, fetch_url_content, parse_url_content
 from .tools.dry_run_save_notion_tool import dry_run_save_to_notion
+from ..observability.langsmith_config import create_langsmith_config
+from ..observability.structured_logging import ReActAgentLogger
 
 
 class DryRunEventProcessingAgent:
@@ -37,6 +39,10 @@ class DryRunEventProcessingAgent:
             api_key=api_key,
             temperature=0.1
         )
+        
+        # Initialize observability
+        self.logger = ReActAgentLogger("dry_run_event_processor")
+        self.langsmith_config = create_langsmith_config()
         
         # Available tools for the agent (using dry-run save instead of real save)
         self.tools = [
@@ -119,6 +125,10 @@ Thought:{agent_scratchpad}"""
         Returns:
             Dict containing processing results and agent reasoning (with dry-run indicators)
         """
+        import time
+        
+        start_time = time.time()
+        
         try:
             # Prepare the input for the agent
             user_info = f"\nUser ID: {user_id}" if user_id else ""
@@ -132,8 +142,21 @@ Pre-classified Type: {input_type or 'Not specified'}{user_info}
 Please classify, process, and show what event information would be saved to Notion. Use dry_run_save_to_notion instead of save_to_notion to avoid making actual API calls. Include the user_id in the event data when showing what would be saved."""
             }
             
-            # Run the agent executor
-            result = self.agent_executor.invoke(agent_input)
+            # Run the agent executor with LangSmith configuration
+            config = self.langsmith_config.copy()
+            if config:
+                print("[DRY-RUN AGENT] Running with LangSmith tracing enabled")
+            
+            result = self.agent_executor.invoke(agent_input, config=config)
+            
+            # Log successful execution
+            duration_ms = (time.time() - start_time) * 1000
+            self.logger.log_agent_invocation_end(
+                user_id=user_id,
+                source=source,
+                success=True,
+                duration_ms=duration_ms
+            )
             
             return {
                 "success": True,
@@ -141,16 +164,28 @@ Please classify, process, and show what event information would be saved to Noti
                 "source": source,
                 "agent_output": result.get("output", ""),
                 "reasoning_steps": self._extract_reasoning_steps(result),
-                "dry_run": True  # Mark this as a dry-run result
+                "dry_run": True,  # Mark this as a dry-run result
+                "duration_ms": duration_ms
             }
             
         except Exception as e:
+            # Log error execution
+            duration_ms = (time.time() - start_time) * 1000
+            self.logger.log_agent_invocation_end(
+                user_id=user_id,
+                source=source,
+                success=False,
+                error=str(e),
+                duration_ms=duration_ms
+            )
+            
             return {
                 "success": False,
                 "error": str(e),
                 "raw_input": raw_input,
                 "source": source,
-                "dry_run": True
+                "dry_run": True,
+                "duration_ms": duration_ms
             }
     
     def _extract_reasoning_steps(self, result: Dict[str, Any]) -> List[Dict[str, str]]:
