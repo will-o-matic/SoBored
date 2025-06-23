@@ -104,7 +104,8 @@ Thought:{agent_scratchpad}"""
         self, 
         raw_input: str, 
         source: str = "unknown",
-        input_type: Optional[str] = None
+        input_type: Optional[str] = None,
+        user_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Process an event input through the dry-run ReAct agent.
@@ -113,20 +114,22 @@ Thought:{agent_scratchpad}"""
             raw_input: Raw input content to process
             source: Source of the input (test_harness, etc.)
             input_type: Pre-classified input type (optional)
+            user_id: User ID from Telegram or other source (optional)
             
         Returns:
             Dict containing processing results and agent reasoning (with dry-run indicators)
         """
         try:
             # Prepare the input for the agent
+            user_info = f"\nUser ID: {user_id}" if user_id else ""
             agent_input = {
                 "input": f"""Process this event input in DRY-RUN mode (no actual saves to Notion):
 
 Raw Input: {raw_input}
 Source: {source}
-Pre-classified Type: {input_type or 'Not specified'}
+Pre-classified Type: {input_type or 'Not specified'}{user_info}
 
-Please classify, process, and show what event information would be saved to Notion. Use dry_run_save_to_notion instead of save_to_notion to avoid making actual API calls."""
+Please classify, process, and show what event information would be saved to Notion. Use dry_run_save_to_notion instead of save_to_notion to avoid making actual API calls. Include the user_id in the event data when showing what would be saved."""
             }
             
             # Run the agent executor

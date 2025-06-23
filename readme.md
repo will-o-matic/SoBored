@@ -333,6 +333,8 @@ Each step is a LangGraph node (LangChain tools, custom code, or API call). All s
 | URL            | URL          | Link if input was a URL |
 | Classification | Select       | Input type (event, url, text, image, unknown) |
 | Status         | Select       | Processing status (new, processed, archived) |
+| UserId         | Rich Text    | User ID from Telegram or other source |
+| Added          | Date         | Timestamp when record was created |
 
 ---
 

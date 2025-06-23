@@ -118,7 +118,8 @@ Thought:{agent_scratchpad}"""
         self, 
         raw_input: str, 
         source: str = "unknown",
-        input_type: Optional[str] = None
+        input_type: Optional[str] = None,
+        user_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Process an event input through the ReAct agent.
@@ -127,14 +128,16 @@ Thought:{agent_scratchpad}"""
             raw_input: Raw input content to process
             source: Source of the input (telegram, web, etc.)
             input_type: Pre-classified input type (optional)
+            user_id: User ID from Telegram or other source (optional)
             
         Returns:
             Dict containing processing results and agent reasoning
         """
         try:
             # Prepare the input for the agent
+            user_info = f"\nUser ID: {user_id}" if user_id else ""
             agent_input = {
-                "input": f"Process this event input:\n\nRaw Input: {raw_input}\nSource: {source}\nPre-classified Type: {input_type or 'Not specified'}\n\nPlease classify, process, and save this event information to Notion if it contains event details."
+                "input": f"Process this event input:\n\nRaw Input: {raw_input}\nSource: {source}\nPre-classified Type: {input_type or 'Not specified'}{user_info}\n\nPlease classify, process, and save this event information to Notion if it contains event details. Include the user_id in the event data when saving to Notion."
             }
             
             # Run the agent executor

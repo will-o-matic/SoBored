@@ -19,6 +19,10 @@ async def handle_webhook(payload: TelegramMessage):
     message = payload.message
     text = message.get("text", "")
     chat_id = message["chat"]["id"]
+    
+    # Extract user ID for Notion integration
+    user_id = str(chat_id)  # Use chat_id as user_id for Telegram
+    
     print("received:", message)
 
     # Prepare raw input for LangGraph classification
@@ -34,7 +38,8 @@ async def handle_webhook(payload: TelegramMessage):
         result = process_event_input(
             raw_input=raw_input,
             source="telegram",
-            input_type=input_type
+            input_type=input_type,
+            user_id=user_id
         )
         
         # Extract response from agent output

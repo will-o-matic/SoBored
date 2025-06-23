@@ -143,5 +143,11 @@ def create_events_database_schema() -> Dict[str, Any]:
                     {"name": "archived", "color": "gray"}
                 ]
             }
+        },
+        "UserId": {
+            "rich_text": {}
+        },
+        "Added": {
+            "date": {}
         }
     }

@@ -11,7 +11,7 @@ def dry_run_save_to_notion(event_data: str) -> dict:
     Args:
         event_data: JSON string containing event information with fields:
                    input_type, raw_input, source, event_title, event_date, 
-                   event_location, event_description
+                   event_location, event_description, user_id (optional)
         
     Returns:
         Dict containing what would be saved to Notion (no actual API calls made)
@@ -43,6 +43,7 @@ def dry_run_save_to_notion(event_data: str) -> dict:
     event_date = data.get("event_date")
     event_location = data.get("event_location")
     event_description = data.get("event_description")
+    user_id = data.get("user_id")
     
     # Check if we would skip saving
     if input_type in ['unknown', 'error']:
@@ -64,7 +65,7 @@ def dry_run_save_to_notion(event_data: str) -> dict:
     # Build the properties that would be sent to Notion
     properties = _build_notion_properties(
         input_type, raw_input, source, event_title, 
-        event_date, event_location, event_description
+        event_date, event_location, event_description, user_id
     )
     
     # Generate what the Notion page would look like
@@ -86,7 +87,8 @@ def dry_run_save_to_notion(event_data: str) -> dict:
             "event_title": event_title,
             "event_date": event_date,
             "event_location": event_location,
-            "event_description": event_description
+            "event_description": event_description,
+            "user_id": user_id
         }
     }
     
@@ -101,7 +103,8 @@ def _build_notion_properties(
     event_title: Optional[str],
     event_date: Optional[str],
     event_location: Optional[str],
-    event_description: Optional[str]
+    event_description: Optional[str],
+    user_id: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Build Notion page properties from event data (same logic as real save_to_notion).
@@ -114,6 +117,7 @@ def _build_notion_properties(
         event_date: Event date
         event_location: Event location
         event_description: Event description
+        user_id: User ID from Telegram or other source
         
     Returns:
         Dictionary of Notion page properties that would be created
@@ -181,6 +185,24 @@ def _build_notion_properties(
     # Status (default to 'new')
     properties["Status"] = {
         "select": {"name": "new"}
+    }
+    
+    # UserId (from Telegram or other source)
+    if user_id:
+        properties["UserId"] = {
+            "rich_text": [
+                {
+                    "type": "text",
+                    "text": {"content": str(user_id)}
+                }
+            ]
+        }
+    
+    # Added timestamp (current datetime when record is created)
+    from datetime import datetime
+    current_time = datetime.now().isoformat()
+    properties["Added"] = {
+        "date": {"start": current_time}
     }
     
     return properties

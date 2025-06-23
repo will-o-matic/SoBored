@@ -114,7 +114,8 @@ def test_agent_flow(
     input_type: Optional[str] = None,
     verbose: bool = False,
     json_output: bool = False,
-    dry_run: bool = False
+    dry_run: bool = False,
+    user_id: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Test the ReAct agent-based event processing flow.
@@ -126,6 +127,7 @@ def test_agent_flow(
         verbose: Whether to show detailed output
         json_output: Whether to output results as JSON
         dry_run: Whether to use dry-run mode (no Notion commits)
+        user_id: User ID to include in the event data (optional)
         
     Returns:
         Dict containing test results
@@ -186,7 +188,8 @@ def test_agent_flow(
             raw_input=raw_input,
             source=source,
             input_type=input_type,
-            dry_run=dry_run
+            dry_run=dry_run,
+            user_id=user_id
         )
         
         if not json_output:
@@ -401,13 +404,14 @@ def display_dry_run_notion_data(dry_run_info: Dict[str, Any]):
     print(f"\n  {Colors.WARNING}🚧 DRY-RUN: These properties would be created in Notion but no actual API call was made{Colors.ENDC}")
 
 
-def interactive_mode(verbose: bool = False, dry_run: bool = False):
+def interactive_mode(verbose: bool = False, dry_run: bool = False, user_id: Optional[str] = None):
     """
     Interactive mode for testing multiple inputs with the agent.
     
     Args:
         verbose: Whether to show detailed output
         dry_run: Whether to use dry-run mode (no Notion commits)
+        user_id: User ID to include in event data (optional)
     """
     mode_header = "🧪 INTERACTIVE DRY-RUN TESTING" if dry_run else "🤖 INTERACTIVE AGENT TESTING"
     print(f"\n{Colors.BOLD}{Colors.HEADER}{mode_header}{Colors.ENDC}")
@@ -417,6 +421,8 @@ def interactive_mode(verbose: bool = False, dry_run: bool = False):
     print(f"\n{Colors.OKCYAN}Available Commands:{Colors.ENDC}")
     print("  'verbose on/off'    - Toggle detailed output")
     print("  'dry-run on/off'    - Toggle dry-run mode")
+    print("  'user-id <id>'      - Set user ID for event data")
+    print("  'user-id reset'     - Clear user ID")
     print("  'source <name>'     - Set input source")
     print("  'type <type>'       - Pre-set input type")
     print("  'type reset'        - Clear input type")
@@ -427,6 +433,7 @@ def interactive_mode(verbose: bool = False, dry_run: bool = False):
     
     current_source = "interactive"
     current_type = None
+    current_user_id = user_id
     
     while True:
         try:
@@ -434,6 +441,8 @@ def interactive_mode(verbose: bool = False, dry_run: bool = False):
             settings = f"Source: {current_source}"
             if current_type:
                 settings += f", Type: {current_type}"
+            if current_user_id:
+                settings += f", UserID: {current_user_id}"
             if verbose:
                 settings += ", Verbose: ON"
             if dry_run:
@@ -463,6 +472,14 @@ def interactive_mode(verbose: bool = False, dry_run: bool = False):
                 dry_run = False
                 print(f"{Colors.OKGREEN}✓ Dry-run mode disabled{Colors.ENDC}")
                 continue
+            elif user_input.lower().startswith('user-id '):
+                if user_input.lower() == 'user-id reset':
+                    current_user_id = None
+                    print(f"{Colors.OKGREEN}✓ User ID reset{Colors.ENDC}")
+                else:
+                    current_user_id = user_input[8:].strip()
+                    print(f"{Colors.OKGREEN}✓ User ID set to: {current_user_id}{Colors.ENDC}")
+                continue
             elif user_input.lower().startswith('source '):
                 current_source = user_input[7:].strip()
                 print(f"{Colors.OKGREEN}✓ Source set to: {current_source}{Colors.ENDC}")
@@ -483,6 +500,8 @@ def interactive_mode(verbose: bool = False, dry_run: bool = False):
                 print(f"\n{Colors.OKCYAN}Available Commands:{Colors.ENDC}")
                 print("  'verbose on/off'    - Toggle detailed output")
                 print("  'dry-run on/off'    - Toggle dry-run mode")
+                print("  'user-id <id>'      - Set user ID for event data")
+                print("  'user-id reset'     - Clear user ID")
                 print("  'source <name>'     - Set input source")
                 print("  'type <type>'       - Pre-set input type")
                 print("  'type reset'        - Clear input type")
@@ -500,7 +519,8 @@ def interactive_mode(verbose: bool = False, dry_run: bool = False):
                 source=current_source,
                 input_type=current_type,
                 verbose=verbose,
-                dry_run=dry_run
+                dry_run=dry_run,
+                user_id=current_user_id
             )
             
         except KeyboardInterrupt:
@@ -589,6 +609,10 @@ Use --dry-run to test event parsing without making actual Notion API calls.
         help='Use dry-run mode (no actual saves to Notion, show what would be saved)'
     )
     parser.add_argument(
+        '--user-id', '-u',
+        help='User ID to include in event data (for testing)'
+    )
+    parser.add_argument(
         '--check-env',
         action='store_true',
         help='Check environment setup and exit'
@@ -640,7 +664,7 @@ Use --dry-run to test event parsing without making actual Notion API calls.
     
     # Handle interactive mode
     if args.interactive:
-        interactive_mode(verbose=args.verbose, dry_run=args.dry_run)
+        interactive_mode(verbose=args.verbose, dry_run=args.dry_run, user_id=args.user_id)
     elif args.input:
         try:
             validated_input = validate_input(args.input)
@@ -650,7 +674,8 @@ Use --dry-run to test event parsing without making actual Notion API calls.
                 input_type=args.type,
                 verbose=args.verbose,
                 json_output=args.json,
-                dry_run=args.dry_run
+                dry_run=args.dry_run,
+                user_id=args.user_id
             )
         except ValueError as e:
             print(f"{Colors.FAIL}💥 {e}{Colors.ENDC}")

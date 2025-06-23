@@ -45,7 +45,8 @@ def process_event_input(
     raw_input: str,
     source: str = "unknown", 
     input_type: Optional[str] = None,
-    dry_run: bool = False
+    dry_run: bool = False,
+    user_id: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Process event input using the ReAct agent.
@@ -55,6 +56,7 @@ def process_event_input(
         source: Source of the input (telegram, web, etc.)
         input_type: Pre-classified input type (optional)
         dry_run: If True, use dry-run agent that doesn't save to Notion
+        user_id: User ID from Telegram or other source (optional)
         
     Returns:
         Dict containing processing results
@@ -69,7 +71,7 @@ def process_event_input(
             agent = create_event_processor()
         
         # Process the input
-        result = agent.process_event(raw_input, source, input_type)
+        result = agent.process_event(raw_input, source, input_type, user_id)
         
         return result
         
