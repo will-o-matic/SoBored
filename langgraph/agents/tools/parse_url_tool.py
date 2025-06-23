@@ -38,9 +38,11 @@ def parse_url_content(webpage_content: str, webpage_title: str = "Untitled") -> 
         
         client = anthropic.Anthropic(api_key=api_key)
         
-        # Get current date for relative date processing
-        current_date = datetime.now().strftime("%Y-%m-%d")
-        current_day = datetime.now().strftime("%A")
+        # Get current date for relative date processing (EST timezone)
+        import pytz
+        est = pytz.timezone('US/Eastern')
+        current_date = datetime.now(est).strftime("%Y-%m-%d")
+        current_day = datetime.now(est).strftime("%A")
         
         # Enhanced prompt for webpage event extraction
         prompt = f"""Extract event details from this webpage content and return ONLY a JSON object with these exact fields:

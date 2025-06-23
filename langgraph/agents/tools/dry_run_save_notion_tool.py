@@ -200,7 +200,10 @@ def _build_notion_properties(
     
     # Added timestamp (current datetime when record is created)
     from datetime import datetime
-    current_time = datetime.now().isoformat()
+    import pytz
+    
+    est = pytz.timezone('US/Eastern')
+    current_time = datetime.now(est).isoformat()
     properties["Added"] = {
         "date": {"start": current_time}
     }

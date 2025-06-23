@@ -2,3 +2,7 @@
 .env
 telegram-bot/__pycache__/main.cpython-313.pyc
 telegram-bot/__pycache__/main.cpython-313.pyc
+venv/*
+venv
+*.pyc
+utils/__pycache__/state.cpython-312.pyc
