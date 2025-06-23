@@ -122,32 +122,49 @@ The ReAct agent system enables easy expansion:
 - **Error Handling**: Tools should return structured error information rather than raising exceptions
 - **Import Pattern**: Import tools in agent as `from .tools import tool_name`
 
+### Dry-Run Development Patterns
+- **Dry-Run Tools**: Create non-destructive versions of tools that show intended actions
+- **Agent Variants**: Separate dry-run agents that use mock tools instead of live APIs
+- **Testing Workflow**: Develop with dry-run mode, validate behavior, then switch to production
+- **Data Validation**: Use dry-run to verify data extraction accuracy before committing
+- **Safe Development**: Test new parsing logic without polluting production databases
+
 ### Legacy Node Development (Deprecated)
 - **Legacy Support**: Original node-based system in `langgraph/nodes/` still available
 - **Migration Path**: Convert nodes to tools using `@tool` decorator pattern
 - **Backward Compatibility**: Use `--legacy` flag in test harness for old behavior
 
 ### Testing Strategy
-**Agent Testing** (current approach):
+**Agent Testing** (recommended approach):
 - Use `python test_url_parse.py` for comprehensive agent flow testing
 - Test different input types: URLs, text descriptions, structured events
 - Interactive mode: `python test_url_parse.py --interactive`
-- Legacy testing: `python test_url_parse.py --legacy` for old StateGraph behavior
+- **Dry-run mode**: `python test_url_parse.py --dry-run` for safe testing without Notion commits
 
-**Tool Testing** (recommended for development):
+**Dry-Run Testing Patterns**:
+- **Development**: Use `--dry-run` to test event parsing logic without side effects
+- **Debugging**: See exactly what would be saved to Notion before committing
+- **Interactive Development**: `python test_url_parse.py --interactive --dry-run` for rapid iteration
+- **CI/CD**: Incorporate dry-run tests in automated testing pipelines
+- **Validation**: Verify parsing accuracy before switching to production mode
+
+**Tool Testing** (for development):
 - Test individual tools in isolation using LangChain tool testing patterns
 - Use `test_agent_flow()` function for end-to-end agent workflows
 - Verify tool invocation patterns and error handling
+- Test both regular and dry-run tool variants
 
 **Integration Testing**:
-- Test end-to-end flow: Input → Agent → Tools → Notion → Response
-- Test with actual Telegram message payloads via webhook
-- Verify MCP integration and fallback mechanisms
+- **Dry-run Integration**: Test full pipeline without external side effects
+- **Production Integration**: Test end-to-end flow: Input → Agent → Tools → Notion → Response
+- **Telegram Integration**: Test with actual Telegram message payloads via webhook
+- **MCP Integration**: Verify MCP integration and fallback mechanisms
 
 ### Code Organization
-**New Agent Architecture**:
-- **Agent Classes**: Main agents in `langgraph/agents/` (e.g., `event_agent.py`)
+**Agent Architecture**:
+- **Agent Classes**: Main agents in `langgraph/agents/` (e.g., `event_agent.py`, `dry_run_agent.py`)
 - **Tool Functions**: Individual tools in `langgraph/agents/tools/`
+- **Dry-Run Tools**: Non-destructive versions (e.g., `dry_run_save_notion_tool.py`)
 - **MCP Integration**: MCP client and configuration in `langgraph/mcp/`
 - **Main Entry Point**: `langgraph/main_agent.py` for unified agent access
 

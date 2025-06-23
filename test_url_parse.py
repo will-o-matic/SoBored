@@ -12,6 +12,7 @@ Usage:
     python test_url_parse.py --interactive
     python test_url_parse.py "Meeting tomorrow 2pm" --verbose
     python test_url_parse.py "https://example.com" --json
+    python test_url_parse.py "https://example.com" --dry-run
 """
 
 import os
@@ -112,7 +113,8 @@ def test_agent_flow(
     source: str = "test_harness", 
     input_type: Optional[str] = None,
     verbose: bool = False,
-    json_output: bool = False
+    json_output: bool = False,
+    dry_run: bool = False
 ) -> Dict[str, Any]:
     """
     Test the ReAct agent-based event processing flow.
@@ -123,16 +125,20 @@ def test_agent_flow(
         input_type: Pre-classified input type (optional)
         verbose: Whether to show detailed output
         json_output: Whether to output results as JSON
+        dry_run: Whether to use dry-run mode (no Notion commits)
         
     Returns:
         Dict containing test results
     """
     if not json_output:
-        print(f"\n{Colors.BOLD}{Colors.HEADER}🤖 TESTING REACT AGENT FLOW{Colors.ENDC}")
+        mode_indicator = "🧪 DRY-RUN MODE" if dry_run else "🤖 TESTING REACT AGENT FLOW"
+        print(f"\n{Colors.BOLD}{Colors.HEADER}{mode_indicator}{Colors.ENDC}")
         print(f"{Colors.BOLD}Input:{Colors.ENDC} {raw_input}")
         print(f"{Colors.BOLD}Source:{Colors.ENDC} {source}")
         if input_type:
             print(f"{Colors.BOLD}Pre-classified Type:{Colors.ENDC} {input_type}")
+        if dry_run:
+            print(f"{Colors.WARNING}🚧 DRY-RUN: No actual saves to Notion will be made{Colors.ENDC}")
         print(f"{Colors.HEADER}{'='*70}{Colors.ENDC}")
     
     # Check if agent system is available
@@ -168,14 +174,19 @@ def test_agent_flow(
         
         # Process using the ReAct agent system
         if not json_output:
-            print_section("🚀 PROCESSING WITH REACT AGENT", color=Colors.OKBLUE)
-            print("Initializing agent and processing input...")
+            processing_mode = "🧪 PROCESSING WITH DRY-RUN AGENT" if dry_run else "🚀 PROCESSING WITH REACT AGENT"
+            print_section(processing_mode, color=Colors.OKBLUE)
+            if dry_run:
+                print("Initializing dry-run agent (no Notion commits)...")
+            else:
+                print("Initializing agent and processing input...")
         
         # Call the main agent processing function
         result = process_event_input(
             raw_input=raw_input,
             source=source,
-            input_type=input_type
+            input_type=input_type,
+            dry_run=dry_run
         )
         
         if not json_output:
@@ -189,7 +200,17 @@ def test_agent_flow(
                 print(agent_output)
                 
                 # Parse and display key information from agent output
-                if "notion" in agent_output.lower():
+                if dry_run:
+                    print_section("🧪 DRY-RUN RESULTS", color=Colors.WARNING)
+                    if "dry_run_save_to_notion" in agent_output.lower() or "would_save_properties" in agent_output.lower():
+                        print(f"{Colors.OKGREEN}✓ Event parsed and would be saved to Notion (DRY-RUN){Colors.ENDC}")
+                        # Try to extract the dry-run save information
+                        dry_run_info = extract_dry_run_info_from_output(agent_output)
+                        if dry_run_info:
+                            display_dry_run_notion_data(dry_run_info)
+                    else:
+                        print(f"{Colors.WARNING}? No dry-run save information found in output{Colors.ENDC}")
+                elif "notion" in agent_output.lower():
                     print_section("📝 NOTION INTEGRATION STATUS", color=Colors.OKCYAN)
                     if any(word in agent_output.lower() for word in ["success", "saved", "created"]):
                         print(f"{Colors.OKGREEN}✓ Event successfully saved to Notion{Colors.ENDC}")
@@ -310,17 +331,92 @@ def extract_event_data_from_output(agent_output: str) -> Dict[str, str]:
     return extracted
 
 
-def interactive_mode(verbose: bool = False):
+def extract_dry_run_info_from_output(agent_output: str) -> Optional[Dict[str, Any]]:
+    """Extract dry-run save information from agent output."""
+    import json
+    
+    # The agent should include structured data in its final answer
+    # Look for the structured event information in the text
+    
+    try:
+        # Try to find the structured data in the agent's final answer
+        dry_run_info = {}
+        
+        # Extract event title - look for patterns like "Event Title: Something"
+        title_match = re.search(r'(?:Event Title|Title):\s*([^\n]+)', agent_output, re.IGNORECASE)
+        if title_match:
+            dry_run_info["event_title"] = title_match.group(1).strip()
+        
+        # Extract event date
+        date_match = re.search(r'(?:Event Date|Date/Time):\s*([^\n]+)', agent_output, re.IGNORECASE)
+        if date_match:
+            dry_run_info["event_date"] = date_match.group(1).strip()
+        
+        # Extract event location
+        location_match = re.search(r'(?:Event Location|Location):\s*([^\n]+)', agent_output, re.IGNORECASE)
+        if location_match:
+            dry_run_info["event_location"] = location_match.group(1).strip()
+            
+        # Extract event description - this is often longer, so handle it specially
+        desc_match = re.search(r'(?:Event Description|Description):\s*([^\n]+(?:\n(?!-)[^\n]+)*)', agent_output, re.IGNORECASE)
+        if desc_match:
+            dry_run_info["event_description"] = desc_match.group(1).strip()
+        
+        # Extract input type
+        type_match = re.search(r'(?:Input Type|Type):\s*([^\n]+)', agent_output, re.IGNORECASE)
+        if type_match:
+            dry_run_info["input_type"] = type_match.group(1).strip()
+        
+        return dry_run_info if dry_run_info else None
+        
+    except Exception as e:
+        print(f"  {Colors.WARNING}Warning: Could not parse dry-run info: {e}{Colors.ENDC}")
+        return None
+
+
+def display_dry_run_notion_data(dry_run_info: Dict[str, Any]):
+    """Display what would be saved to Notion in dry-run mode."""
+    print(f"\n{Colors.BOLD}📋 WOULD SAVE TO NOTION:{Colors.ENDC}")
+    
+    # Display the event data that was extracted
+    if "event_title" in dry_run_info and dry_run_info["event_title"]:
+        print(f"  {Colors.OKCYAN}Title:{Colors.ENDC} {dry_run_info['event_title']}")
+    
+    if "event_date" in dry_run_info and dry_run_info["event_date"]:
+        print(f"  {Colors.OKCYAN}Date/Time:{Colors.ENDC} {dry_run_info['event_date']}")
+        
+    if "event_location" in dry_run_info and dry_run_info["event_location"]:
+        print(f"  {Colors.OKCYAN}Location:{Colors.ENDC} {dry_run_info['event_location']}")
+        
+    if "event_description" in dry_run_info and dry_run_info["event_description"]:
+        description = dry_run_info["event_description"]
+        if len(description) > 150:
+            description = description[:150] + "..."
+        print(f"  {Colors.OKCYAN}Description:{Colors.ENDC} {description}")
+        
+    if "input_type" in dry_run_info and dry_run_info["input_type"]:
+        print(f"  {Colors.OKCYAN}Classification:{Colors.ENDC} {dry_run_info['input_type']}")
+    
+    # Show that this would be saved but wasn't
+    print(f"\n  {Colors.WARNING}🚧 DRY-RUN: These properties would be created in Notion but no actual API call was made{Colors.ENDC}")
+
+
+def interactive_mode(verbose: bool = False, dry_run: bool = False):
     """
     Interactive mode for testing multiple inputs with the agent.
     
     Args:
         verbose: Whether to show detailed output
+        dry_run: Whether to use dry-run mode (no Notion commits)
     """
-    print(f"\n{Colors.BOLD}{Colors.HEADER}🤖 INTERACTIVE AGENT TESTING{Colors.ENDC}")
+    mode_header = "🧪 INTERACTIVE DRY-RUN TESTING" if dry_run else "🤖 INTERACTIVE AGENT TESTING"
+    print(f"\n{Colors.BOLD}{Colors.HEADER}{mode_header}{Colors.ENDC}")
+    if dry_run:
+        print("🚧 DRY-RUN MODE: No actual saves to Notion will be made")
     print("Enter content to test (URLs, text descriptions, events) or 'quit' to exit")
     print(f"\n{Colors.OKCYAN}Available Commands:{Colors.ENDC}")
     print("  'verbose on/off'    - Toggle detailed output")
+    print("  'dry-run on/off'    - Toggle dry-run mode")
     print("  'source <name>'     - Set input source")
     print("  'type <type>'       - Pre-set input type")
     print("  'type reset'        - Clear input type")
@@ -340,6 +436,8 @@ def interactive_mode(verbose: bool = False):
                 settings += f", Type: {current_type}"
             if verbose:
                 settings += ", Verbose: ON"
+            if dry_run:
+                settings += ", Dry-Run: ON"
             
             user_input = input(f"\n{Colors.BOLD}[{settings}] Enter input: {Colors.ENDC}").strip()
             
@@ -356,6 +454,14 @@ def interactive_mode(verbose: bool = False):
             elif user_input.lower() == 'verbose off':
                 verbose = False
                 print(f"{Colors.OKGREEN}✓ Verbose mode disabled{Colors.ENDC}")
+                continue
+            elif user_input.lower() == 'dry-run on':
+                dry_run = True
+                print(f"{Colors.OKGREEN}✓ Dry-run mode enabled{Colors.ENDC}")
+                continue
+            elif user_input.lower() == 'dry-run off':
+                dry_run = False
+                print(f"{Colors.OKGREEN}✓ Dry-run mode disabled{Colors.ENDC}")
                 continue
             elif user_input.lower().startswith('source '):
                 current_source = user_input[7:].strip()
@@ -376,6 +482,7 @@ def interactive_mode(verbose: bool = False):
             elif user_input.lower() == 'help':
                 print(f"\n{Colors.OKCYAN}Available Commands:{Colors.ENDC}")
                 print("  'verbose on/off'    - Toggle detailed output")
+                print("  'dry-run on/off'    - Toggle dry-run mode")
                 print("  'source <name>'     - Set input source")
                 print("  'type <type>'       - Pre-set input type")
                 print("  'type reset'        - Clear input type")
@@ -392,7 +499,8 @@ def interactive_mode(verbose: bool = False):
                 raw_input=user_input,
                 source=current_source,
                 input_type=current_type,
-                verbose=verbose
+                verbose=verbose,
+                dry_run=dry_run
             )
             
         except KeyboardInterrupt:
@@ -433,6 +541,8 @@ Examples:
   python test_url_parse.py "Meeting tomorrow 2pm" --verbose
   python test_url_parse.py --interactive
   python test_url_parse.py "Workshop next Friday" --json --source email
+  python test_url_parse.py "https://example.com/event" --dry-run
+  python test_url_parse.py --interactive --dry-run
 
 Environment Requirements:
   ANTHROPIC_API_KEY     - Required for Claude API access
@@ -440,6 +550,7 @@ Environment Requirements:
   NOTION_DATABASE_ID    - Optional for Notion integration
 
 Note: The system will work without Notion credentials but won't save events.
+Use --dry-run to test event parsing without making actual Notion API calls.
         """
     )
     
@@ -471,6 +582,11 @@ Note: The system will work without Notion credentials but won't save events.
         '--json', '-j',
         action='store_true',
         help='Output results as JSON (useful for scripting)'
+    )
+    parser.add_argument(
+        '--dry-run', '-d',
+        action='store_true',
+        help='Use dry-run mode (no actual saves to Notion, show what would be saved)'
     )
     parser.add_argument(
         '--check-env',
@@ -524,7 +640,7 @@ Note: The system will work without Notion credentials but won't save events.
     
     # Handle interactive mode
     if args.interactive:
-        interactive_mode(verbose=args.verbose)
+        interactive_mode(verbose=args.verbose, dry_run=args.dry_run)
     elif args.input:
         try:
             validated_input = validate_input(args.input)
@@ -533,7 +649,8 @@ Note: The system will work without Notion credentials but won't save events.
                 source=args.source,
                 input_type=args.type,
                 verbose=args.verbose,
-                json_output=args.json
+                json_output=args.json,
+                dry_run=args.dry_run
             )
         except ValueError as e:
             print(f"{Colors.FAIL}💥 {e}{Colors.ENDC}")
