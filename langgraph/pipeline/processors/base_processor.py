@@ -25,7 +25,7 @@ class BaseProcessor(ABC):
     
     @abstractmethod
     def process(self, classified_input: Dict[str, Any], source: str = "telegram", 
-                user_id: Optional[str] = None) -> Dict[str, Any]:
+                user_id: Optional[str] = None, parent_run=None) -> Dict[str, Any]:
         """
         Process classified input and extract event data
         

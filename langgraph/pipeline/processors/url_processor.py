@@ -5,6 +5,8 @@ Optimized URL processor for event extraction
 import logging
 import time
 from typing import Dict, Any, Optional
+from langsmith.run_trees import RunTree
+import langsmith
 from .base_processor import BaseProcessor
 
 logger = logging.getLogger(__name__)
@@ -25,7 +27,7 @@ class URLProcessor(BaseProcessor):
         self.processor_type = "url"
     
     def process(self, classified_input: Dict[str, Any], source: str = "telegram", 
-                user_id: Optional[str] = None) -> Dict[str, Any]:
+                user_id: Optional[str] = None, parent_run: Optional[RunTree] = None) -> Dict[str, Any]:
         """
         Process URL input and extract event data
         
@@ -48,29 +50,30 @@ class URLProcessor(BaseProcessor):
             if not url:
                 raise ValueError("No URL provided in classified input")
             
-            # Step 1: Fetch URL content
+            # Step 1: Fetch URL content (with explicit child run)
             logger.debug(f"Fetching content from URL: {url}")
-            content_result = self._fetch_url_content(url)
+            content_result = self._fetch_url_content_traced(url, parent_run)
             
             if content_result.get("fetch_status") != "success":
                 raise Exception(f"Failed to fetch URL content: {content_result.get('error', 'Unknown error')}")
             
-            # Step 2: Parse content for event data  
+            # Step 2: Parse content for event data (with explicit child run)
             logger.debug("Parsing URL content for event data")
-            parsed_result = self._parse_url_content(
+            parsed_result = self._parse_url_content_traced(
                 content_result.get("webpage_content", ""),
-                content_result.get("webpage_title", "Untitled")
+                content_result.get("webpage_title", "Untitled"),
+                parent_run
             )
             
             # Step 3: Validate extracted data
             validation_result = self._validate_extracted_data(parsed_result)
             
-            # Step 4: Save to Notion (or dry run)
-            save_result = self._save_event_data({
+            # Step 4: Save to Notion (or dry run) (with explicit child run)
+            save_result = self._save_event_data_traced({
                 **result,
                 **parsed_result,
                 **validation_result
-            })
+            }, parent_run)
             
             # Combine all results
             final_result = {
@@ -215,3 +218,75 @@ class URLProcessor(BaseProcessor):
                 "notion_page_id": None,
                 "notion_url": None
             }
+    
+    def _fetch_url_content_traced(self, url: str, parent_run: Optional[RunTree] = None) -> Dict[str, Any]:
+        """Fetch URL content with explicit LangSmith child run"""
+        if parent_run:
+            fetch_run = parent_run.create_child(
+                name="Fetch URL Content", 
+                run_type="tool",
+                inputs={"url": url}
+            )
+            fetch_run.post()
+        
+        try:
+            result = self._fetch_url_content(url)
+            
+            if parent_run:
+                fetch_run.end(outputs=result)
+                fetch_run.patch()
+            
+            return result
+        except Exception as e:
+            if parent_run:
+                fetch_run.end(error=str(e))
+                fetch_run.patch()
+            raise
+    
+    def _parse_url_content_traced(self, content: str, title: str, parent_run: Optional[RunTree] = None) -> Dict[str, Any]:
+        """Parse URL content with explicit LangSmith child run"""
+        if parent_run:
+            parse_run = parent_run.create_child(
+                name="Parse URL Content",
+                run_type="tool", 
+                inputs={"content_length": len(content), "title": title}
+            )
+            parse_run.post()
+        
+        try:
+            result = self._parse_url_content(content, title)
+            
+            if parent_run:
+                parse_run.end(outputs=result)
+                parse_run.patch()
+            
+            return result
+        except Exception as e:
+            if parent_run:
+                parse_run.end(error=str(e))
+                parse_run.patch()
+            raise
+    
+    def _save_event_data_traced(self, event_data: Dict[str, Any], parent_run: Optional[RunTree] = None) -> Dict[str, Any]:
+        """Save event data with explicit LangSmith child run"""
+        if parent_run:
+            save_run = parent_run.create_child(
+                name="Save to Notion" if not self.dry_run else "Dry Run Save to Notion",
+                run_type="tool",
+                inputs={"dry_run": self.dry_run, "has_event_data": bool(event_data.get("event_title"))}
+            )
+            save_run.post()
+        
+        try:
+            result = self._save_event_data(event_data)
+            
+            if parent_run:
+                save_run.end(outputs=result)
+                save_run.patch()
+            
+            return result
+        except Exception as e:
+            if parent_run:
+                save_run.end(error=str(e))
+                save_run.patch()
+            raise

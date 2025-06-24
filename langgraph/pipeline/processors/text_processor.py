@@ -24,7 +24,7 @@ class TextProcessor(BaseProcessor):
         self.processor_type = "text"
     
     def process(self, classified_input: Dict[str, Any], source: str = "telegram", 
-                user_id: Optional[str] = None) -> Dict[str, Any]:
+                user_id: Optional[str] = None, parent_run=None) -> Dict[str, Any]:
         """
         Process text input and extract event data
         

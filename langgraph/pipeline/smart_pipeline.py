@@ -8,6 +8,9 @@ import logging
 import os
 import time
 from typing import Dict, Any, Optional
+from datetime import datetime
+from langsmith import traceable
+from langsmith.run_trees import RunTree
 from .classifiers.smart_classifier import SmartClassifier
 from .processors.url_processor import URLProcessor
 from .processors.text_processor import TextProcessor
@@ -46,7 +49,7 @@ class SmartEventPipeline:
     def process_event_input(self, raw_input: str, source: str = "telegram", 
                            user_id: Optional[str] = None) -> Dict[str, Any]:
         """
-        Main entry point for smart pipeline processing
+        Main entry point for smart pipeline processing with proper LangSmith tracing
         
         Args:
             raw_input: Raw input content (URL, text, etc.)
@@ -56,19 +59,48 @@ class SmartEventPipeline:
         Returns:
             Dict containing complete processing results
         """
+        # Create parent RunTree for the entire pipeline
+        parent_run = RunTree(
+            name="Smart Event Processing Pipeline",
+            run_type="chain",
+            inputs={
+                "raw_input": raw_input,
+                "source": source,
+                "user_id": user_id,
+                "dry_run": self.dry_run
+            },
+            tags=["smart_pipeline", source, "event_processing"],
+            metadata={
+                "pipeline_version": "1.0",
+                "user_id": user_id,
+                "source": source
+            }
+        )
+        parent_run.post()
+        
         start_time = time.time()
         classification_start = time.time()
         
         try:
             logger.info(f"Starting smart pipeline processing for input: {raw_input[:100]}...")
             
-            # Step 1: Smart Classification
+            # Step 1: Smart Classification (as child run)
+            classification_run = parent_run.create_child(
+                name="Smart Input Classification",
+                run_type="tool",
+                inputs={"raw_input": raw_input}
+            )
+            classification_run.post()
+            
             classified_input = self.classifier.classify(raw_input)
             classification_time = time.time() - classification_start
             
+            classification_run.end(outputs=classified_input)
+            classification_run.patch()
+            
             logger.debug(f"Classification completed in {classification_time:.3f}s: {classified_input}")
             
-            # Step 2: Route to appropriate processor
+            # Step 2: Route to appropriate processor (as child run)
             processing_start = time.time()
             input_type = classified_input.get("input_type", "text")
             
@@ -76,9 +108,22 @@ class SmartEventPipeline:
                 logger.warning(f"No processor found for input type: {input_type}, using text processor")
                 input_type = "text"
             
+            processor_run = parent_run.create_child(
+                name=f"{input_type.title()} Event Processing",
+                run_type="chain",
+                inputs={
+                    "classified_input": classified_input,
+                    "processor_type": input_type
+                }
+            )
+            processor_run.post()
+            
             processor = self.processors[input_type]
-            processing_result = processor.process(classified_input, source, user_id)
+            processing_result = processor.process(classified_input, source, user_id, processor_run)
             processing_time = time.time() - processing_start
+            
+            processor_run.end(outputs=processing_result)
+            processor_run.patch()
             
             # Step 3: Combine results with pipeline metadata
             total_time = time.time() - start_time
@@ -99,6 +144,10 @@ class SmartEventPipeline:
             # Update statistics
             self._update_pipeline_stats(classification_time, processing_time, total_time, True)
             
+            # End parent run successfully
+            parent_run.end(outputs=final_result)
+            parent_run.patch()
+            
             logger.info(f"Smart pipeline processing completed in {total_time:.2f}s")
             return final_result
             
@@ -117,6 +166,10 @@ class SmartEventPipeline:
                     "dry_run": self.dry_run
                 }
             }
+            
+            # End parent run with error
+            parent_run.end(error=str(e))
+            parent_run.patch()
             
             self._update_pipeline_stats(0, 0, total_time, False)
             logger.error(f"Smart pipeline processing failed: {e}")
