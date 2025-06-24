@@ -70,6 +70,23 @@ def dry_run_save_to_notion(event_data: Union[dict, str]) -> dict:
     event_description = data.get("event_description")
     user_id = data.get("user_id")
     
+    # Handle multi-instance events (multiple dates) - dry run version
+    if event_date and ',' in str(event_date):
+        dates = [d.strip() for d in event_date.split(',')]
+        print(f"[DRY-RUN] Would create {len(dates)} separate records for multi-instance event")
+        print(f"[DRY-RUN] Sessions: {', '.join(dates)}")
+        
+        # Return success for first session (representing the series)
+        return {
+            "notion_save_status": "success",
+            "notion_page_id": f"dry-run-multi-{len(dates)}-sessions",
+            "notion_url": f"https://www.notion.so/dry-run-multi-{len(dates)}-sessions",
+            "event_title": f"{event_title} (Series of {len(dates)})",
+            "total_sessions": len(dates),
+            "dry_run_note": f"Would create {len(dates)} separate Notion records with series linking",
+            "dry_run": True
+        }
+    
     # Check if we would skip saving
     if input_type in ['unknown', 'error']:
         return {
@@ -129,7 +146,10 @@ def _build_notion_properties(
     event_date: Optional[str],
     event_location: Optional[str],
     event_description: Optional[str],
-    user_id: Optional[str] = None
+    user_id: Optional[str] = None,
+    series_id: Optional[str] = None,
+    session_number: Optional[int] = None,
+    total_sessions: Optional[int] = None
 ) -> Dict[str, Any]:
     """
     Build Notion page properties from event data (same logic as real save_to_notion).
@@ -143,6 +163,9 @@ def _build_notion_properties(
         event_location: Event location
         event_description: Event description
         user_id: User ID from Telegram or other source
+        series_id: Series ID for multi-instance events
+        session_number: Session number (1, 2, 3, etc.)
+        total_sessions: Total sessions in the series
         
     Returns:
         Dictionary of Notion page properties that would be created
@@ -232,6 +255,27 @@ def _build_notion_properties(
     properties["Added"] = {
         "date": {"start": current_time}
     }
+    
+    # Series metadata (for multi-instance events)
+    if series_id:
+        properties["Series ID"] = {
+            "rich_text": [
+                {
+                    "type": "text",
+                    "text": {"content": series_id}
+                }
+            ]
+        }
+    
+    if session_number is not None:
+        properties["Session Number"] = {
+            "number": session_number
+        }
+    
+    if total_sessions is not None:
+        properties["Total Sessions"] = {
+            "number": total_sessions
+        }
     
     return properties
 

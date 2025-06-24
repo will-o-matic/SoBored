@@ -117,7 +117,8 @@ def create_events_database_schema() -> Dict[str, Any]:
                     {"name": "telegram", "color": "blue"},
                     {"name": "web", "color": "green"},
                     {"name": "email", "color": "yellow"},
-                    {"name": "instagram", "color": "pink"}
+                    {"name": "instagram", "color": "pink"},
+                    {"name": "pipeline", "color": "purple"}
                 ]
             }
         },
@@ -149,5 +150,17 @@ def create_events_database_schema() -> Dict[str, Any]:
         },
         "Added": {
             "date": {}
+        },
+        "Series ID": {
+            "rich_text": {}
+        },
+        "Session Number": {
+            "number": {"format": "number"}
+        },
+        "Total Sessions": {
+            "number": {"format": "number"}
+        },
+        "Recurrence": {
+            "rich_text": {}
         }
     }

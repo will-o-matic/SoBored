@@ -74,6 +74,13 @@ def save_to_notion(event_data: Union[dict, str]) -> dict:
             "reason": f"Skipping save for input_type: {input_type}"
         }
     
+    # Handle multi-instance events (multiple dates)
+    if event_date and ',' in str(event_date):
+        return _save_multi_instance_event(
+            input_type, raw_input, source, event_title, 
+            event_date, event_location, event_description, user_id
+        )
+    
     # Get database ID from environment
     database_id = os.environ.get("NOTION_DATABASE_ID")
     if not database_id:
@@ -118,6 +125,145 @@ def save_to_notion(event_data: Union[dict, str]) -> dict:
         }
 
 
+def _save_multi_instance_event(
+    input_type: str,
+    raw_input: str,
+    source: str, 
+    event_title: Optional[str],
+    event_date: str,
+    event_location: Optional[str],
+    event_description: Optional[str],
+    user_id: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Save multi-instance event as separate Notion records with series linking.
+    
+    Args:
+        input_type: Type of input
+        raw_input: Raw input content
+        source: Source of input
+        event_title: Event title
+        event_date: Comma-separated dates
+        event_location: Event location
+        event_description: Event description 
+        user_id: User ID
+        
+    Returns:
+        Dict containing save status and details for all instances
+    """
+    import hashlib
+    import time
+    
+    try:
+        # Parse multiple dates
+        dates = [d.strip() for d in event_date.split(',')]
+        
+        # Generate series ID
+        series_content = f"{event_title}_{event_location}_{user_id}_{int(time.time())}"
+        series_id = hashlib.md5(series_content.encode()).hexdigest()[:8]
+        
+        print(f"[SAVE] Creating multi-instance event: {len(dates)} sessions")
+        print(f"[SAVE] Series ID: {series_id}")
+        
+        # Get database ID
+        database_id = os.environ.get("NOTION_DATABASE_ID")
+        if not database_id:
+            return {
+                "notion_save_status": "failed",
+                "notion_error": "Database ID not configured"
+            }
+        
+        # Initialize Notion client
+        notion_client = get_notion_client()
+        
+        created_pages = []
+        series_urls = []
+        
+        # Create a record for each date
+        for i, date in enumerate(dates):
+            # Format date for Notion (handle various formats)
+            formatted_date = _format_date_for_notion(date)
+            
+            # Create session title
+            session_title = f"{event_title} (Session {i+1} of {len(dates)})"
+            
+            # Build properties for this instance with series metadata
+            properties = _build_notion_properties(
+                input_type=input_type,
+                raw_input=raw_input,
+                source=source,
+                event_title=session_title,
+                event_date=formatted_date,
+                event_location=event_location,
+                event_description=event_description,
+                user_id=user_id,
+                series_id=series_id,
+                session_number=i + 1,
+                total_sessions=len(dates)
+            )
+            
+            # Create the page
+            page = notion_client.create_page(database_id, properties)
+            
+            if page:
+                page_id_clean = page['id'].replace('-', '')
+                notion_url = f"https://www.notion.so/{page_id_clean}"
+                created_pages.append(page['id'])
+                series_urls.append(notion_url)
+                print(f"[SAVE] Created session {i+1}: {page['id']}")
+            else:
+                print(f"[SAVE] Failed to create session {i+1}")
+        
+        if created_pages:
+            return {
+                "notion_save_status": "success",
+                "notion_page_id": created_pages[0],  # Return first page ID
+                "notion_url": series_urls[0],  # Return first URL
+                "series_id": series_id,
+                "total_sessions": len(dates),
+                "created_sessions": len(created_pages),
+                "all_page_ids": created_pages,
+                "all_urls": series_urls,
+                "event_title": f"{event_title} (Series of {len(dates)})"
+            }
+        else:
+            return {
+                "notion_save_status": "failed", 
+                "notion_error": "Failed to create any session records"
+            }
+            
+    except Exception as e:
+        print(f"[SAVE] Multi-instance save error: {e}")
+        return {
+            "notion_save_status": "failed",
+            "notion_error": f"Multi-instance save failed: {str(e)}"
+        }
+
+
+def _format_date_for_notion(date_str: str) -> str:
+    """
+    Format date string for Notion's ISO 8601 requirement.
+    
+    Args:
+        date_str: Date string to format
+        
+    Returns:
+        ISO 8601 formatted date string
+    """
+    date_str = date_str.strip()
+    
+    # Handle "YYYY-MM-DD HH:MM" format
+    if len(date_str) == 16 and ' ' in date_str:
+        return date_str.replace(' ', 'T') + ':00'
+    
+    # Handle "YYYY-MM-DD" format
+    if len(date_str) == 10 and date_str.count('-') == 2:
+        return date_str + 'T00:00:00'
+    
+    # Return as-is for other formats (hopefully already ISO 8601)
+    return date_str
+
+
 def _build_notion_properties(
     input_type: str,
     raw_input: str, 
@@ -126,7 +272,10 @@ def _build_notion_properties(
     event_date: Optional[str],
     event_location: Optional[str],
     event_description: Optional[str],
-    user_id: Optional[str] = None
+    user_id: Optional[str] = None,
+    series_id: Optional[str] = None,
+    session_number: Optional[int] = None,
+    total_sessions: Optional[int] = None
 ) -> Dict[str, Any]:
     """
     Build Notion page properties from event data.
@@ -140,6 +289,9 @@ def _build_notion_properties(
         event_location: Event location
         event_description: Event description
         user_id: User ID from Telegram or other source
+        series_id: Series ID for multi-instance events
+        session_number: Session number (1, 2, 3, etc.)
+        total_sessions: Total sessions in the series
         
     Returns:
         Dictionary of Notion page properties
@@ -229,6 +381,27 @@ def _build_notion_properties(
     properties["Added"] = {
         "date": {"start": current_time}
     }
+    
+    # Series metadata (for multi-instance events)
+    if series_id:
+        properties["Series ID"] = {
+            "rich_text": [
+                {
+                    "type": "text",
+                    "text": {"content": series_id}
+                }
+            ]
+        }
+    
+    if session_number is not None:
+        properties["Session Number"] = {
+            "number": session_number
+        }
+    
+    if total_sessions is not None:
+        properties["Total Sessions"] = {
+            "number": total_sessions
+        }
     
     return properties
 

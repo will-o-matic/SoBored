@@ -62,6 +62,7 @@ async def handle_webhook(payload: TelegramMessage):
                 # Extract meaningful information for user response
                 event_title = result.get("event_title", "")
                 notion_url = result.get("notion_url", "")
+                total_sessions = result.get("total_sessions")
                 
                 if event_title:
                     if notion_url:
@@ -70,6 +71,10 @@ async def handle_webhook(payload: TelegramMessage):
                         response_message = f"✅ Event saved: **{event_title}**"
                 else:
                     response_message = "✅ Event processed and saved to Notion!"
+                
+                # Add multi-instance info
+                if total_sessions and total_sessions > 1:
+                    response_message += f"\n📅 Created {total_sessions} separate sessions with series linking"
                 
                 # Add processing method info for debugging
                 if processing_method == "smart_pipeline":
