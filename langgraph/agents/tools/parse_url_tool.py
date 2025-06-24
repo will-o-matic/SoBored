@@ -65,11 +65,17 @@ Webpage Content:
 Return JSON with these fields (use null for missing information):
 {{
   "title": "event name/title", 
-  "date": "YYYY-MM-DD HH:MM format (convert relative dates to actual dates based on current system time)",
+  "date": "YYYY-MM-DD HH:MM format (if multiple dates, separate with commas like '2025-06-15 17:00, 2025-06-18 17:00')",
   "location": "venue/location",
   "description": "brief description", 
   "confidence": 0.8
 }}
+
+IMPORTANT for multi-date events:
+- If you see multiple dates (like "June 15, 18, 22, 24, & 29"), extract ALL dates
+- Format each date as YYYY-MM-DD HH:MM and separate with commas
+- Use the same time for all dates if only one time is specified
+- Example: "June 15, 18, 22 at 5PM" becomes "2025-06-15 17:00, 2025-06-18 17:00, 2025-06-22 17:00"
 
 Set confidence between 0-1 based on:
 - 0.9-1.0: Clear event with specific date/time/location

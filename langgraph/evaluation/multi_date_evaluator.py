@@ -217,17 +217,20 @@ class MultiDateEventEvaluator:
         
         # Extract actual dates from outputs
         actual_dates = []
-        if "all_page_ids" in outputs and len(outputs["all_page_ids"]) > 1:
-            # Multi-instance case - would need to check individual records
-            # For now, assume first date is properly formatted
-            event_date = outputs.get("event_date")
-            if event_date and ',' in event_date:
-                actual_dates = [d.strip() for d in event_date.split(',')]
-            else:
-                actual_dates = [event_date] if event_date else []
+        event_date = outputs.get("event_date", "")
+        
+        # Check if it's a multi-date event (comma-separated dates or multiple sessions)
+        is_multi_date = (
+            ("all_page_ids" in outputs and len(outputs["all_page_ids"]) > 1) or
+            (outputs.get("total_sessions", 1) > 1) or
+            ("," in str(event_date))
+        )
+        
+        if is_multi_date and event_date and ',' in str(event_date):
+            # Multi-instance case - split comma-separated dates
+            actual_dates = [d.strip() for d in str(event_date).split(',')]
         else:
             # Single instance case
-            event_date = outputs.get("event_date") 
             actual_dates = [event_date] if event_date else []
         
         # Check ISO 8601 formatting
@@ -363,10 +366,12 @@ class MultiDateEventEvaluator:
         if not date_str:
             return False
             
-        # Common ISO 8601 patterns for Notion
+        # Common ISO 8601 patterns for Notion (including space-separated variants)
         iso_patterns = [
             r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$',  # YYYY-MM-DDTHH:MM:SS
             r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$',        # YYYY-MM-DDTHH:MM
+            r'^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$',  # YYYY-MM-DD HH:MM:SS
+            r'^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$',        # YYYY-MM-DD HH:MM
             r'^\d{4}-\d{2}-\d{2}$',                     # YYYY-MM-DD
         ]
         
