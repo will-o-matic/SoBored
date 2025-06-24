@@ -105,5 +105,12 @@ python update_notion_schema.py [--dry-run] [--database-id ID]
 - **URL Processor**: Already had proper date context handling
 - **Validation**: All date parsing tests now pass with correct year interpretation
 
+### Text Processor Multi-Date Enhancement (v1.2.0)
+- **Issue Fixed**: Multi-date text events like "June 24, June 26, and June 28 at 2PM" now extract all dates correctly
+- **Prompt Improvements**: Enhanced LLM instructions for comma-separated multi-date extraction
+- **Pattern Recognition**: Distinguishes explicit date lists from recurring patterns
+- **Performance**: Multi-date text events now create proper series with session counts and linking
+- **Validation**: LangSmith trace b51775d9-9966-485d-9940-856c92f9c441 now processes correctly
+
 ## Workflow Practices
 - Always update readme.md and claude.md when making changes that impact those files' contents

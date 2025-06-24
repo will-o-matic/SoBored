@@ -160,7 +160,7 @@ class TextProcessor(BaseProcessor):
             prompt = f"""
             Extract event information from the following text. Return a JSON object with these fields:
             - event_title: The name/title of the event
-            - event_date: Date and time (in YYYY-MM-DD HH:MM format if possible)
+            - event_date: Date and time (YYYY-MM-DD HH:MM format - if multiple dates, separate with commas)
             - event_location: Venue/location of the event
             - event_description: Brief description of the event
             - parsing_confidence: Confidence score between 0.0 and 1.0
@@ -170,6 +170,21 @@ class TextProcessor(BaseProcessor):
             - Current year: {current_year}
             - When parsing dates without explicit years (like "June 25th"), assume the current year {current_year}
             - For past dates in the current year or dates that seem to refer to future events, use {current_year}
+            
+            MULTI-DATE EXTRACTION RULES:
+            - If you see EXPLICIT multiple dates listed (like "June 24, June 26, and June 28"), extract ALL dates
+            - Format each date as YYYY-MM-DD HH:MM and separate with commas
+            - Use the same time for all dates if only one time is specified
+            - For RECURRING patterns (every X, weekly, daily for N weeks), extract only the START date
+            - IMPORTANT: Only extract dates for the ACTUAL event, NOT mentioned dates like "rescheduled from" or "originally planned for"
+            
+            Examples:
+              * "June 24, 26, 28 at 2PM" → "2025-06-24 14:00, 2025-06-26 14:00, 2025-06-28 14:00" (explicit list)
+              * "Workshop on June 15 and June 17 at 10AM" → "2025-06-15 10:00, 2025-06-17 10:00" (explicit list)
+              * "Meeting every Tuesday for 3 weeks starting June 24" → "2025-06-24 00:00" (recurring pattern)
+              * "Daily sessions June 24, 25, 26, 27" → extract all (explicit consecutive dates)
+              * "Weekly class every Monday starting June 24" → "2025-06-24 00:00" (recurring pattern)
+              * "Concert on June 25th (rescheduled from June 15th)" → "2025-06-25 00:00" (only actual event date)
             
             If any information is not available, use empty string for that field.
             

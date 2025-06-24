@@ -490,3 +490,66 @@ class MultiDateEventEvaluator:
 3. **Performance Optimization**: Consider parallel processing for events with >5 sessions
 4. **Edge Case Handling**: Better distinction between actual multi-dates vs. date mentions in description
 """
+
+
+def main():
+    """
+    Main function to run the multi-date evaluation
+    
+    Usage:
+        python langgraph/evaluation/multi_date_evaluator.py
+    """
+    print("🚀 Starting Multi-Date Event Processing Evaluation")
+    print("=" * 60)
+    
+    try:
+        import sys
+        import os
+        from dotenv import load_dotenv
+        
+        # Load environment variables
+        load_dotenv()
+        
+        # Check for LangSmith API key
+        langsmith_key = os.getenv("LANGSMITH_API_KEY")
+        if not langsmith_key:
+            print("❌ LANGSMITH_API_KEY not found in environment")
+            print("💡 Please set LANGSMITH_API_KEY in your .env file")
+            return
+        
+        sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+        
+        from langsmith import Client
+        from langgraph.pipeline.smart_pipeline import SmartEventPipeline
+        
+        # Initialize components
+        client = Client(api_key=langsmith_key)
+        evaluator = MultiDateEventEvaluator(client)
+        pipeline = SmartEventPipeline(dry_run=True)
+        
+        print("✅ Initialized LangSmith client and Smart Pipeline")
+        
+        # Run comprehensive evaluation
+        print("\n🧪 Running comprehensive evaluation with all test scenarios...")
+        results = evaluator.run_comprehensive_evaluation(
+            system_function=pipeline.process_event_input,
+            experiment_name="multi_date_evaluation_latest"
+        )
+        
+        if results and not (hasattr(results, 'get') and results.get("error")):
+            print("\n🎉 Evaluation completed successfully!")
+            print("📊 Results available in LangSmith dashboard:")
+            print("   https://smith.langchain.com")
+            print(f"   Dataset: {evaluator.dataset_name}")
+            print("   Experiment: multi_date_evaluation_latest")
+        else:
+            error_msg = results.get("error", "Unknown error") if hasattr(results, 'get') else "Results object issue"
+            print(f"\n❌ Evaluation failed: {error_msg}")
+            
+    except Exception as e:
+        print(f"\n❌ Error running evaluation: {e}")
+        print("💡 Make sure LANGSMITH_API_KEY is set in your .env file")
+
+
+if __name__ == "__main__":
+    main()
