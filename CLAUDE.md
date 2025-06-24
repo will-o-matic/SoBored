@@ -79,5 +79,31 @@ This is a smart event aggregator with **dual processing modes**:
 
 Both modes use **Telegram Bot** as the primary interface and integrate with **LangSmith** for evaluation and feedback collection.
 
+## Recent Updates
+
+### Multi-Date Event Support (v1.1.0)
+- **Enhanced Database Schema**: Added dedicated fields for series linking (Series ID, Session Number, Total Sessions, Recurrence)
+- **Smart Pipeline Optimization**: Implemented multi-instance event handling with proper series metadata
+- **Evaluation Framework**: Comprehensive LangSmith evaluation system for multi-date event testing
+- **Date Parsing Fix**: Added current year context to LLM prompts for accurate date interpretation
+
+### Evaluation & Testing
+```bash
+# Run multi-date evaluation framework
+python setup_multi_date_evaluation.py
+
+# Test date parsing fix specifically  
+python test_date_parsing_fix.py
+
+# Update Notion database schema for multi-date support
+python update_notion_schema.py [--dry-run] [--database-id ID]
+```
+
+### Date Context Enhancement
+- **Issue Fixed**: Relative dates like "June 25th" now correctly parse as current year (2025) instead of defaulting to past years
+- **Text Processor**: Updated LLM prompts to include current date context
+- **URL Processor**: Already had proper date context handling
+- **Validation**: All date parsing tests now pass with correct year interpretation
+
 ## Workflow Practices
 - Always update readme.md and claude.md when making changes that impact those files' contents

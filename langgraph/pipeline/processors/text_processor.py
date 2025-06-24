@@ -148,6 +148,15 @@ class TextProcessor(BaseProcessor):
             
             client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
             
+            # Get current date for context
+            from datetime import datetime
+            import pytz
+            
+            est = pytz.timezone('US/Eastern')
+            current_date = datetime.now(est)
+            current_date_str = current_date.strftime("%Y-%m-%d")
+            current_year = current_date.year
+            
             prompt = f"""
             Extract event information from the following text. Return a JSON object with these fields:
             - event_title: The name/title of the event
@@ -155,6 +164,12 @@ class TextProcessor(BaseProcessor):
             - event_location: Venue/location of the event
             - event_description: Brief description of the event
             - parsing_confidence: Confidence score between 0.0 and 1.0
+            
+            IMPORTANT DATE CONTEXT:
+            - Current date: {current_date_str}
+            - Current year: {current_year}
+            - When parsing dates without explicit years (like "June 25th"), assume the current year {current_year}
+            - For past dates in the current year or dates that seem to refer to future events, use {current_year}
             
             If any information is not available, use empty string for that field.
             
