@@ -70,21 +70,75 @@ def dry_run_save_to_notion(event_data: Union[dict, str]) -> dict:
     event_description = data.get("event_description")
     user_id = data.get("user_id")
     
-    # Handle multi-instance events (multiple dates) - dry run version
+    # Handle multi-instance events (multiple dates) - dry run version with full session linking
     if event_date and ',' in str(event_date):
         dates = [d.strip() for d in event_date.split(',')]
         print(f"[DRY-RUN] Would create {len(dates)} separate records for multi-instance event")
         print(f"[DRY-RUN] Sessions: {', '.join(dates)}")
         
-        # Return success for first session (representing the series)
+        # Generate series ID (same logic as real tool)
+        import hashlib
+        import time
+        series_content = f"{event_title}_{event_location}_{user_id}_{int(time.time())}"
+        series_id = hashlib.md5(series_content.encode()).hexdigest()[:8]
+        
+        print(f"[DRY-RUN] Series ID: {series_id}")
+        
+        # Create mock data for each session
+        created_pages = []
+        series_urls = []
+        session_details = []
+        
+        for i, date in enumerate(dates):
+            # Create session title (same logic as real tool)
+            session_title = f"{event_title} (Session {i+1} of {len(dates)})"
+            mock_page_id = f"dry-run-session-{i+1}-{series_id}"
+            page_id_clean = mock_page_id.replace('-', '')
+            notion_url = f"https://www.notion.so/{page_id_clean}"
+            
+            created_pages.append(mock_page_id)
+            series_urls.append(notion_url)
+            
+            # Build properties for this session with series metadata
+            session_properties = _build_notion_properties(
+                input_type=input_type,
+                raw_input=raw_input,
+                source=source,
+                event_title=session_title,
+                event_date=date,
+                event_location=event_location,
+                event_description=event_description,
+                user_id=user_id,
+                series_id=series_id,
+                session_number=i + 1,
+                total_sessions=len(dates)
+            )
+            
+            session_details.append({
+                "session_number": i + 1,
+                "session_title": session_title,
+                "session_date": date,
+                "page_id": mock_page_id,
+                "notion_url": notion_url,
+                "properties": session_properties
+            })
+            
+            print(f"[DRY-RUN] Session {i+1}: {session_title} at {date}")
+        
+        # Return comprehensive session linking data (matching real tool format)
         return {
             "notion_save_status": "success",
-            "notion_page_id": f"dry-run-multi-{len(dates)}-sessions",
-            "notion_url": f"https://www.notion.so/dry-run-multi-{len(dates)}-sessions",
-            "event_title": f"{event_title} (Series of {len(dates)})",
+            "notion_page_id": created_pages[0],  # Return first page ID
+            "notion_url": series_urls[0],  # Return first URL
+            "series_id": series_id,
             "total_sessions": len(dates),
-            "dry_run_note": f"Would create {len(dates)} separate Notion records with series linking",
-            "dry_run": True
+            "created_sessions": len(created_pages),
+            "all_page_ids": created_pages,
+            "all_urls": series_urls,
+            "event_title": f"{event_title} (Series of {len(dates)})",
+            "dry_run": True,
+            "session_details": session_details,
+            "dry_run_note": f"Would create {len(dates)} separate Notion records with series linking"
         }
     
     # Check if we would skip saving
