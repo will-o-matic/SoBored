@@ -48,16 +48,33 @@ async def handle_webhook(payload: TelegramMessage):
                 user_id=user_id
             )
             
-            # Extract response from agent output
-            if result.get("success"):
-                agent_output = result.get("agent_output", "")
-                # Create a user-friendly response from the agent output
-                if "successfully saved to Notion" in agent_output.lower():
-                    response_message = "✅ Event processed and saved to Notion!"
-                elif "failed" in agent_output.lower() or "error" in agent_output.lower():
-                    response_message = "⚠️ I processed your message but encountered some issues. Check the details in Notion."
+            # Extract response from agent output - handle both ReAct agent and Smart Pipeline
+            processing_method = result.get("processing_method", "unknown")
+            
+            # Check for successful processing (different formats for different systems)
+            success_indicators = [
+                result.get("success"),  # ReAct agent format
+                result.get("notion_save_status") == "success",  # Smart Pipeline format
+                "notion_page_id" in result and result.get("notion_page_id")  # Alternative success check
+            ]
+            
+            if any(success_indicators) and not result.get("error"):
+                # Extract meaningful information for user response
+                event_title = result.get("event_title", "")
+                notion_url = result.get("notion_url", "")
+                
+                if event_title:
+                    if notion_url:
+                        response_message = f"✅ Event saved: **{event_title}**\n[View in Notion]({notion_url})"
+                    else:
+                        response_message = f"✅ Event saved: **{event_title}**"
                 else:
-                    response_message = f"📝 Processed your event: {agent_output[:200]}..."
+                    response_message = "✅ Event processed and saved to Notion!"
+                
+                # Add processing method info for debugging
+                if processing_method == "smart_pipeline":
+                    processing_time = result.get("processing_time", 0)
+                    response_message += f"\n⚡ Processed in {processing_time:.1f}s with Smart Pipeline"
                 
                 # Log successful Telegram event
                 telegram_logger.log_telegram_event(
@@ -68,9 +85,18 @@ async def handle_webhook(payload: TelegramMessage):
                     success=True
                 )
             else:
-                error_msg = result.get("error", "Unknown error")
-                print(f"Agent error: {error_msg}")
-                response_message = "❌ Sorry, I encountered an error processing your message. Please try again."
+                error_msg = result.get("error", "Processing failed")
+                print(f"Processing error ({processing_method}): {error_msg}")
+                
+                # More specific error messages based on the type of failure
+                if "notion" in error_msg.lower():
+                    response_message = "⚠️ Event was processed but couldn't be saved to Notion. Please try again."
+                elif "fetch" in error_msg.lower() or "url" in error_msg.lower():
+                    response_message = "⚠️ Couldn't access that URL. Please check the link and try again."
+                elif "parse" in error_msg.lower():
+                    response_message = "⚠️ Couldn't extract event details from that content. Try providing more specific information."
+                else:
+                    response_message = "❌ Sorry, I encountered an error processing your message. Please try again."
                 
                 # Log failed Telegram event
                 telegram_logger.log_telegram_event(
