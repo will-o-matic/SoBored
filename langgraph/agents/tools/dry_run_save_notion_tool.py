@@ -1,15 +1,15 @@
 import os
 import json
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Union
 from langchain_core.tools import tool
 
 @tool
-def dry_run_save_to_notion(event_data: str) -> dict:
+def dry_run_save_to_notion(event_data: Union[dict, str]) -> dict:
     """
     Dry-run version of save_to_notion that shows what would be saved without actually committing to Notion.
     
     Args:
-        event_data: JSON string containing event information with fields:
+        event_data: Dictionary containing event information with fields:
                    input_type, raw_input, source, event_title, event_date, 
                    event_location, event_description, user_id (optional)
         
@@ -18,20 +18,45 @@ def dry_run_save_to_notion(event_data: str) -> dict:
     """
     print("[DRY-RUN SAVE] *** DRY-RUN MODE - NO ACTUAL NOTION API CALLS WILL BE MADE ***")
     try:
-        print(f"[DRY-RUN] Event data: {event_data[:200]}...")
+        print(f"[DRY-RUN] Event data type: {type(event_data)}")
+        print(f"[DRY-RUN] Event data: {event_data}")
         
-        # Handle case where agent passes a string that looks like JSON but has Python None values
-        cleaned_event_data = event_data.replace('None', 'null').replace("'", '"')
-        
-        # Parse the event data from JSON string
-        data = json.loads(cleaned_event_data)
-        print(f"[DRY-RUN] Parsed data: {data}")
-    except json.JSONDecodeError as e:
-        print(f"[DRY-RUN] JSON decode error: {e}")
-        print(f"[DRY-RUN] Attempted to parse: {cleaned_event_data}")
+        # Handle both dict and string inputs for backward compatibility
+        if isinstance(event_data, str):
+            # Handle case where agent passes a string that looks like Python dict representation
+            try:
+                # First try to parse as JSON
+                cleaned_event_data = event_data.replace('None', 'null').replace("'", '"')
+                data = json.loads(cleaned_event_data)
+                print(f"[DRY-RUN] Parsed JSON string to dict: {data}")
+            except json.JSONDecodeError:
+                # If JSON parsing fails, try to evaluate as Python literal
+                try:
+                    import ast
+                    data = ast.literal_eval(event_data)
+                    print(f"[DRY-RUN] Parsed Python literal to dict: {data}")
+                except (ValueError, SyntaxError):
+                    print(f"[DRY-RUN] Failed to parse as JSON or Python literal: {event_data[:200]}...")
+                    return {
+                        "notion_save_status": "dry_run_failed",
+                        "notion_error": f"Could not parse event_data string as dict or JSON",
+                        "dry_run": True
+                    }
+        elif isinstance(event_data, dict):
+            data = event_data
+            print(f"[DRY-RUN] Using dict input directly: {data}")
+        else:
+            return {
+                "notion_save_status": "dry_run_failed",
+                "notion_error": f"Invalid event_data type: {type(event_data)}. Expected dict or str.",
+                "dry_run": True
+            }
+            
+    except Exception as e:
+        print(f"[DRY-RUN] Error processing event_data: {e}")
         return {
             "notion_save_status": "dry_run_failed",
-            "notion_error": f"Invalid JSON format in event_data: {str(e)}",
+            "notion_error": f"Error processing event_data: {str(e)}",
             "dry_run": True
         }
     

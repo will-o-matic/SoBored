@@ -1,38 +1,60 @@
 import os
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Union
 from langchain_core.tools import tool
 from utils.notion_client import get_notion_client
 
 @tool
-def save_to_notion(event_data: str) -> dict:
+def save_to_notion(event_data: Union[dict, str]) -> dict:
     """
     Save event data to Notion database.
     
     Args:
-        event_data: JSON string containing event information with fields:
+        event_data: Dictionary containing event information with fields:
                    input_type, raw_input, source, event_title, event_date, 
                    event_location, event_description, user_id (optional)
         
     Returns:
         Dict containing save status and Notion page details
     """
-    import json
-    
     try:
-        print(f"[SAVE] Event data: {event_data[:200]}...")
+        print(f"[SAVE] Event data type: {type(event_data)}")
+        print(f"[SAVE] Event data: {event_data}")
         
-        # Handle case where agent passes a string that looks like JSON but has Python None values
-        cleaned_event_data = event_data.replace('None', 'null').replace("'", '"')
-        
-        # Parse the event data from JSON string
-        data = json.loads(cleaned_event_data)
-        print(f"[SAVE] Parsed data: {data}")
-    except json.JSONDecodeError as e:
-        print(f"[SAVE] JSON decode error: {e}")
-        print(f"[SAVE] Attempted to parse: {cleaned_event_data}")
+        # Handle both dict and string inputs for backward compatibility
+        if isinstance(event_data, str):
+            # Handle case where agent passes a string that looks like Python dict representation
+            try:
+                import json
+                # First try to parse as JSON
+                cleaned_event_data = event_data.replace('None', 'null').replace("'", '"')
+                data = json.loads(cleaned_event_data)
+                print(f"[SAVE] Parsed JSON string to dict: {data}")
+            except json.JSONDecodeError:
+                # If JSON parsing fails, try to evaluate as Python literal
+                try:
+                    import ast
+                    data = ast.literal_eval(event_data)
+                    print(f"[SAVE] Parsed Python literal to dict: {data}")
+                except (ValueError, SyntaxError):
+                    print(f"[SAVE] Failed to parse as JSON or Python literal: {event_data[:200]}...")
+                    return {
+                        "notion_save_status": "failed",
+                        "notion_error": f"Could not parse event_data string as dict or JSON"
+                    }
+        elif isinstance(event_data, dict):
+            data = event_data
+            print(f"[SAVE] Using dict input directly: {data}")
+        else:
+            return {
+                "notion_save_status": "failed",
+                "notion_error": f"Invalid event_data type: {type(event_data)}. Expected dict or str."
+            }
+            
+    except Exception as e:
+        print(f"[SAVE] Error processing event_data: {e}")
         return {
             "notion_save_status": "failed",
-            "notion_error": f"Invalid JSON format in event_data: {str(e)}"
+            "notion_error": f"Error processing event_data: {str(e)}"
         }
     
     # Extract individual fields

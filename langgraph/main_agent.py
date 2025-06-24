@@ -1,5 +1,5 @@
 """
-Main entry point for the ReAct agent-based event processing system.
+Main entry point for the event processing system with smart pipeline integration.
 """
 
 import os
@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 
 from .agents.event_agent import create_event_agent
 from .agents.dry_run_agent import create_dry_run_event_agent
+from .pipeline.smart_pipeline import should_use_smart_pipeline, process_with_smart_pipeline
 from .observability.langsmith_config import configure_langsmith, log_agent_session_start, log_agent_session_end
 from .observability.structured_logging import ReActAgentLogger
 
@@ -55,13 +56,13 @@ def process_event_input(
     user_id: Optional[str] = None
 ) -> Dict[str, Any]:
     """
-    Process event input using the ReAct agent.
+    Process event input using smart pipeline or ReAct agent based on feature flags.
     
     Args:
         raw_input: Raw input content to process
         source: Source of the input (telegram, web, etc.)
-        input_type: Pre-classified input type (optional)
-        dry_run: If True, use dry-run agent that doesn't save to Notion
+        input_type: Pre-classified input type (optional, used by ReAct agent)
+        dry_run: If True, use dry-run mode that doesn't save to Notion
         user_id: User ID from Telegram or other source (optional)
         
     Returns:
@@ -82,16 +83,35 @@ def process_event_input(
     )
     
     try:
-        # Create the appropriate agent (regular or dry-run)
-        if dry_run:
-            print("[MAIN] Creating DRY-RUN agent processor")
-            agent = create_dry_run_event_processor()
+        # Feature flag: Check if smart pipeline should be used
+        if should_use_smart_pipeline():
+            print(f"[MAIN] Using SMART PIPELINE (dry_run={dry_run})")
+            result = process_with_smart_pipeline(
+                raw_input=raw_input,
+                source=source,
+                user_id=user_id,
+                dry_run=dry_run
+            )
+            
+            # Add session metadata for compatibility
+            result["session_id"] = session_id
+            result["processing_method"] = "smart_pipeline"
+            
         else:
-            print("[MAIN] Creating regular agent processor")
-            agent = create_event_processor()
-        
-        # Process the input
-        result = agent.process_event(raw_input, source, input_type, user_id)
+            # Fallback to ReAct agent
+            print(f"[MAIN] Using REACT AGENT (dry_run={dry_run})")
+            
+            # Create the appropriate agent (regular or dry-run)
+            if dry_run:
+                print("[MAIN] Creating DRY-RUN agent processor")
+                agent = create_dry_run_event_processor()
+            else:
+                print("[MAIN] Creating regular agent processor")
+                agent = create_event_processor()
+            
+            # Process the input
+            result = agent.process_event(raw_input, source, input_type, user_id)
+            result["processing_method"] = "react_agent"
         
         # Log successful completion
         duration_ms = (time.time() - start_time) * 1000
@@ -126,7 +146,8 @@ def process_event_input(
             "error": error_msg,
             "raw_input": raw_input,
             "source": source,
-            "session_id": session_id
+            "session_id": session_id,
+            "processing_method": "failed"
         }
 
 
