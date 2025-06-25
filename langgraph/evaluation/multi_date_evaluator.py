@@ -60,7 +60,7 @@ class MultiDateEventEvaluator:
                     "expected_sessions": 5,
                     "expected_dates": ["2025-06-15 17:00","2025-06-18 17:00","2025-06-22 17:00","2025-06-24 17:00","2025-06-29 17:00"],
                     "expected_title_pattern": "David Zinn Chalk Art",
-                    "expected_series_linking": False,
+                    "expected_series_linking": True,
                     "expected_notion_records": 1
                 }
             },
