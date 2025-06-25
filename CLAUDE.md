@@ -1,127 +1,95 @@
-# CLAUDE.md
+# CLAUDE.md - SuperClaude Cfg
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository. Use Context7 for up-to-date documentation.
+## Legend
+| Symbol | Meaning | | Abbrev | Meaning |
+|--------|---------|---|--------|---------|
+| → | leads to | | cfg | configuration |
+| & | and/with | | docs | documentation |
+| > | greater than | | ops | operations |
 
-## Project Location
-- **Recommended**: WSL filesystem at `~/SoBored` for Windows users
-- **Legacy**: Windows filesystem at `/mnt/c/users/will/documents/codingprojects/SoBored` (slower, permission issues)
+@RULES.md
+@MCP.md
+@PERSONAS.md
 
-## Development Commands
+## Core Cfg
 
-### Local Development
-```bash
-# Install dependencies
-pip install -r requirements.txt
-
-# Start the FastAPI server (port 8000)
-uvicorn telegram-bot.main:app --reload --port 8000
-
-# In a separate terminal, expose with ngrok
-ngrok http 8000
-
-# Test the smart pipeline directly
-python test_smart_pipeline.py  # Test new optimized pipeline
-
-# Test the ReAct agent pipeline directly  
-python test_url_parse.py "https://example.com/event"
-python test_url_parse.py "Concert tonight at 8pm"
-
-# Compare both systems
-python run_comparison_experiment.py  # Compare performance
-
-# Test with dry-run mode (no actual Notion saves)
-DRY_RUN=true python test_smart_pipeline.py  # Test without API calls
-DRY_RUN=true python test_url_parse.py "https://example.com/event"
+```yaml
+Philosophy: Code>docs | Simple→complex | Security first
+Communication: Concise format | Symbols: →|&:» | Bullets>prose
+Workflow: TodoRead()→TodoWrite(3+)→Execute | Update immediate
+Stack: React|TS|Vite + Node|Express|PostgreSQL + Git|ESLint|Jest
+Commands: /user:<command> [flags] | /task:<action> | Ex: /user:build --init
 ```
 
-### Development Utilities
-```bash
-# Notion API utilities for development and debugging
-python -m utils.notion_dev_utils validate-token      # Check token and permissions
-python -m utils.notion_dev_utils list-databases      # List accessible databases
-python -m utils.notion_dev_utils database-info <id>  # Get database details
-python -m utils.notion_dev_utils create-database     # Create new database
-python -m utils.notion_dev_utils query-pages <id>    # List pages in database
-python -m utils.notion_dev_utils export-database <id> --format csv  # Export data
-python -m utils.notion_dev_utils clean-database <id> --dry-run      # Test cleanup
+## Thinking Modes
+
+```yaml
+Activation: Natural language OR command flags
+Flags: --think | --think-hard | --ultrathink
+none: Single file|Basic | think: Multi-file|Standard
+think hard: Architecture|Complex | ultrathink: Redesign|Critical
+Examples: /user:analyze --code --think | /user:design --api --ultrathink
 ```
 
-### Environment Setup
-- Create `.env` file with required tokens:
-  ```
-  TELEGRAM_BOT_TOKEN=your-token-here
-  NOTION_TOKEN=your-notion-integration-token
-  NOTION_DATABASE_ID=your-notion-database-id
-  ANTHROPIC_API_KEY=your-claude-api-key
-  LANGSMITH_API_KEY=your-langsmith-api-key
-  USE_SMART_PIPELINE=false  # Set to 'true' to enable optimized pipeline
-  DRY_RUN=false  # Set to 'true' to enable dry-run mode (no actual Notion API calls)
-  ```
-- Set Telegram webhook: `https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://abc123.ngrok.io/telegram/webhook`
-- Set up Notion integration and database using `python test_run_graph.py`
+## Token Economy
 
-## Development Practices
-
-### Package Management
-- Always add to `requirements.txt` when adding new packages
-- Ensure all team members have consistent dependencies
-
-### Tool Architecture
-- **Unified Notion Tool**: Single `save_to_notion` tool handles both real and dry-run modes
-- **Environment-Driven**: Use `DRY_RUN=true` for testing, `DRY_RUN=false` for production
-- **Composition Pattern**: `NotionSaver` class provides configurable save behavior
-- **Testing**: Always test changes with `DRY_RUN=true` before real deployment
-
-## Architecture Overview
-
-This is a smart event aggregator with **dual processing modes**:
-
-### Smart Pipeline (Optimized - Default when USE_SMART_PIPELINE=true)
-- **3-tier classification**: Regex → ML → LLM (only for complex cases)
-- **Specialized processors**: Direct URL/text processing without agent overhead
-- **Performance**: ~5x faster than ReAct agent (18s → <5s)
-- **Efficiency**: 95%+ cases handled without LLM classification calls
-
-### ReAct Agent (Legacy - Fallback when USE_SMART_PIPELINE=false)
-- **LangChain ReAct Agents** with **LangGraph tools** for content processing
-- Full reasoning cycles for all operations
-- Comprehensive but slower processing
-- Fallback for complex edge cases
-
-Both modes use **Telegram Bot** as the primary interface and integrate with **LangSmith** for evaluation and feedback collection.
-
-## Recent Updates
-
-### Multi-Date Event Support (v1.1.0)
-- **Enhanced Database Schema**: Added dedicated fields for series linking (Series ID, Session Number, Total Sessions, Recurrence)
-- **Smart Pipeline Optimization**: Implemented multi-instance event handling with proper series metadata
-- **Evaluation Framework**: Comprehensive LangSmith evaluation system for multi-date event testing
-- **Date Parsing Fix**: Added current year context to LLM prompts for accurate date interpretation
-
-### Evaluation & Testing
-```bash
-# Run multi-date evaluation framework
-python setup_multi_date_evaluation.py
-
-# Test date parsing fix specifically  
-python test_date_parsing_fix.py
-
-# Update Notion database schema for multi-date support
-python update_notion_schema.py [--dry-run] [--database-id ID]
+```yaml
+Targets: Minimal commands | Responses<4 lines | Concise docs
+Symbols: →(leads to) |(separator) &(combine) :(define) »(sequence)
+Remove: the|a|very|really|that|which | "in order to"→to | and→&
 ```
 
-### Date Context Enhancement
-- **Issue Fixed**: Relative dates like "June 25th" now correctly parse as current year (2025) instead of defaulting to past years
-- **Text Processor**: Updated LLM prompts to include current date context
-- **URL Processor**: Already had proper date context handling
-- **Validation**: All date parsing tests now pass with correct year interpretation
+## UltraCompressed Mode
 
-### Text Processor Multi-Date Enhancement (v1.2.0)
-- **Issue Fixed**: Multi-date text events like "June 24, June 26, and June 28 at 2PM" now extract all dates correctly
-- **Prompt Improvements**: Enhanced LLM instructions for comma-separated multi-date extraction
-- **Pattern Recognition**: Distinguishes explicit date lists from recurring patterns
-- **Performance**: Multi-date text events now create proper series with session counts and linking
-- **Validation**: LangSmith trace b51775d9-9966-485d-9940-856c92f9c441 now processes correctly
+```yaml
+Purpose: ~70% token reduction | Telegram-style docs | Symbols & abbrevs
+Activation: --uc flag | Natural language | Auto when context>70%
+Rules: shared/ultracompressed.yml | Remove filler | Use symbols
+Output: Direct info only | No intros/outros | Lists>prose
+Legend: Auto-generate | Used symbols/abbrevs only | Start of docs
+```
 
-## Workflow Practices
-- Always update readme.md and claude.md when making changes that impact those files' contents
+## Code Economy
+
+```yaml
+Generation: No comments | Short names | No boilerplate
+Documentation: Only on request | Bullets>prose | Essential facts only
+Patterns: Destructure | Chain | Ternary | Arrow functions
+Output: Code only | No explanation unless asked
+```
+
+## Cost Optimization
+
+```yaml
+Models: Simple→sonnet | Complex→sonnet-4 | Critical→opus-4
+MCP: C7 progressive loading | Seq adaptive thinking | Batch similar
+Efficiency: Min tokens | Cache results | Batch ops
+```
+
+## Auto-Activation
+
+```yaml
+Files: *.tsx→frontend | *.sql→data | Docker→devops | *.test→qa
+Keywords: bug|error→debugger | optimize→performance | secure→security
+Context: TypeError→trace | Module error→deps | Permission→security
+Tasks: Auto-detect complexity→seamless task creation | ./claudedocs/tasks/in-progress→auto-resume
+```
+
+## Task Management
+
+```yaml
+Mode: Automatic | No user prompts | Seamless activation
+Detection: ≥8 complexity points→auto-create | 5-7→brief notify | <5→normal
+Triggers: "build|create|implement" + "system|feature" + complexity flags
+Flow: requirement→analyze→create→breakdown→implement | Background operation
+Recovery: Auto-resume active tasks | Context preservation | Git integration
+```
+
+## Performance
+
+```yaml
+Ops: Parallel>sequential | Batch similar | One in-progress
+```
+
+---
+*SuperClaude v4.0.0 | Critical load order | Internal Claude cfg*
