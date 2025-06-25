@@ -11,9 +11,9 @@ logger = logging.getLogger(__name__)
 class SmartClassifier:
     """
     Three-tier classification system:
-    1. Regex/heuristic (instant, 95% accuracy)
-    2. Simple ML classifier (fast, 99% accuracy) - TODO: Future implementation
-    3. LLM classification (complex edge cases) - Fallback to existing tool
+    1. Regex/heuristic 
+    2. Simple ML classifier - TODO: Future implementation
+    3. LLM classification
     """
     
     def __init__(self, use_llm_fallback: bool = True):
