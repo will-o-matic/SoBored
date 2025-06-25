@@ -3,13 +3,22 @@ import os
 import re
 from datetime import datetime
 from langchain_core.tools import tool
+from langsmith import traceable
 
 try:
     import anthropic
+    from langsmith.wrappers import wrap_anthropic
 except ImportError:
     anthropic = None
+    wrap_anthropic = None
 
 @tool
+@traceable(
+    run_type="tool", 
+    name="Parse URL Content",
+    metadata={"use_case": "event_extraction"},
+    tags=["url-processing", "event-parsing"]
+)
 def parse_url_content(webpage_content: str, webpage_title: str = "Untitled") -> dict:
     """
     Parse webpage content using Claude API to extract event details.
@@ -36,7 +45,9 @@ def parse_url_content(webpage_content: str, webpage_title: str = "Untitled") -> 
         if not api_key:
             return _fallback_parse_webpage(webpage_content, webpage_title)
         
-        client = anthropic.Anthropic(api_key=api_key)
+        # Wrap Anthropic client for LangSmith observability
+        raw_client = anthropic.Anthropic(api_key=api_key)
+        client = wrap_anthropic(raw_client) if wrap_anthropic else raw_client
         
         # Get current date for relative date processing (EST timezone)
         import pytz
@@ -85,13 +96,8 @@ Set confidence between 0-1 based on:
 
 Return ONLY the JSON, no other text."""
 
-        # Call Claude API (using Haiku for cost efficiency)
-        response = client.messages.create(
-            model="claude-3-haiku-20240307",
-            max_tokens=300,
-            temperature=0.1,
-            messages=[{"role": "user", "content": prompt}]
-        )
+        # Call Claude API (using Haiku for cost efficiency) - now fully traced
+        response = extract_event_with_claude(client, prompt, model="claude-3-haiku-20240307")
         
         # Parse the JSON response
         response_text = response.content[0].text.strip()
@@ -169,3 +175,35 @@ def _fallback_parse_webpage(content: str, title: str) -> dict:
     result["event_description"] = clean_content[:200]
     
     return result
+
+
+@traceable(
+    run_type="llm",
+    name="Claude Event Extraction",
+    metadata={"model": "claude-3-haiku-20240307", "provider": "anthropic"},
+    tags=["claude", "event-parsing", "llm-call"]
+)
+def extract_event_with_claude(client, prompt: str, model: str = "claude-3-haiku-20240307"):
+    """
+    Dedicated LLM function for event extraction with full LangSmith observability.
+    
+    This function is traced separately to provide detailed visibility into:
+    - Complete prompt and response
+    - Token usage and costs
+    - Model parameters and performance
+    - Error handling and debugging
+    
+    Args:
+        client: Wrapped Anthropic client with LangSmith tracing
+        prompt: Complete formatted prompt for Claude
+        model: Claude model to use for extraction
+        
+    Returns:
+        Anthropic response object with full tracing
+    """
+    return client.messages.create(
+        model=model,
+        max_tokens=300,
+        temperature=0.1,
+        messages=[{"role": "user", "content": prompt}]
+    )
