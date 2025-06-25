@@ -444,6 +444,163 @@ export DRY_RUN=false
 
 ---
 
+## 🏗️ Architectural Improvements TODO
+
+Based on comprehensive architectural review, the following improvements are prioritized for production readiness and scalability:
+
+### 🚨 **Critical (P0) - Production Blockers**
+
+#### 1. **Async-First Architecture** ⏱️
+**Issue**: Webhook processing blocks Telegram responses (5s timeout risk)
+**Location**: `telegram-bot/main.py:44-49`
+```python
+# CURRENT: Synchronous blocking
+result = process_event_input(raw_input, source, input_type, user_id)
+
+# NEEDED: Async with background tasks
+background_tasks.add_task(process_event_async, payload, event_id)
+return {"status": "accepted", "event_id": event_id}
+```
+
+#### 2. **Unified Error Handling Strategy** 🛡️
+**Issue**: Inconsistent error patterns across components
+**Impact**: Poor debugging, inconsistent user experience
+```python
+# NEEDED: Structured error hierarchy
+class EventProcessingError(Exception):
+    def __init__(self, message: str, error_code: str, retry_after: Optional[int] = None)
+
+class NotionAPIError(EventProcessingError): pass
+class ValidationError(EventProcessingError): pass
+```
+
+#### 3. **Input Validation Layer** 🔐
+**Issue**: No webhook data validation before processing
+**Security Risk**: Malformed data can crash processing pipeline
+```python
+# NEEDED: Pydantic validation models
+class TelegramWebhookModel(BaseModel):
+    update_id: int = Field(..., gt=0)
+    message: Optional[TelegramMessageModel] = None
+```
+
+### 🔧 **High Priority (P1) - Scalability Requirements**
+
+#### 4. **Configuration Management** ⚙️
+**Issue**: Environment variables scattered throughout codebase
+**Solution**: Centralized Pydantic configuration with validation
+```python
+class AppConfig(BaseSettings):
+    anthropic_api_key: str = Field(..., env="ANTHROPIC_API_KEY")
+    notion_token: str = Field(..., env="NOTION_TOKEN")
+    use_smart_pipeline: bool = Field(default=True, env="USE_SMART_PIPELINE")
+```
+
+#### 5. **Sophisticated Rate Limiting** ⏱️
+**Issue**: Basic Notion API rate limiting without queuing
+**Solution**: Redis-based distributed rate limiter with request queuing
+```python
+class DistributedRateLimiter:
+    async def acquire(self, key: str) -> bool:
+        # Redis-based rate limiting with queue management
+```
+
+#### 6. **Circuit Breaker Pattern** 🔄
+**Issue**: No protection against cascading external API failures
+**Solution**: Circuit breaker for Notion API calls
+```python
+class CircuitBreaker:
+    # CLOSED → OPEN → HALF_OPEN states
+    # Fail fast when external services are down
+```
+
+### 📊 **Medium Priority (P2) - Operational Excellence**
+
+#### 7. **Enhanced Monitoring & Observability** 📈
+**Current**: Basic LangSmith integration
+**Needed**: Comprehensive metrics with Prometheus/Grafana
+```python
+# Key metrics to track:
+webhook_requests_total = Counter('webhook_requests_total', ['source', 'status'])
+processing_duration = Histogram('event_processing_seconds', ['event_type'])
+notion_api_calls = Counter('notion_api_calls_total', ['endpoint', 'status'])
+```
+
+#### 8. **Local Persistence Layer** 💾
+**Issue**: Direct dependency on Notion API availability
+**Solution**: Local database for event queuing and retry logic
+```python
+class EventRepository:
+    async def save_event(self, event_data: EventModel) -> str:
+        # Save locally first, sync to Notion asynchronously
+```
+
+#### 9. **Comprehensive Testing Strategy** 🧪
+**Current**: Limited test coverage
+**Needed**: Unit, integration, and performance tests
+```python
+# Test categories needed:
+# - Unit tests (70%): Individual component testing
+# - Integration tests (20%): End-to-end webhook processing
+# - Performance tests (10%): Load testing and benchmarks
+```
+
+### 🚀 **Low Priority (P3) - Future Enhancements**
+
+#### 10. **Horizontal Scaling Architecture** 📈
+**Issue**: Single-process design limits scale
+**Solution**: Kubernetes deployment with auto-scaling
+```yaml
+# kubernetes deployment with:
+# - Multiple replicas
+# - Resource limits
+# - Health checks
+# - Auto-scaling based on metrics
+```
+
+#### 11. **Advanced Security Measures** 🔒
+**Enhancements**: 
+- Request signing validation
+- Rate limiting per user
+- Input sanitization
+- Audit logging
+
+#### 12. **Performance Optimizations** ⚡
+**Opportunities**:
+- Connection pooling for HTTP clients
+- Redis caching for repeated operations
+- Batch processing for high-volume periods
+- Async database operations
+
+### 📋 **Implementation Plan**
+
+**Phase 1 (Week 1-2)**: Critical fixes for production readiness
+- [ ] Implement async webhook processing
+- [ ] Add unified error handling
+- [ ] Create input validation layer
+- [ ] Centralize configuration management
+
+**Phase 2 (Week 3-4)**: Scalability improvements
+- [ ] Implement sophisticated rate limiting
+- [ ] Add circuit breaker pattern
+- [ ] Enhanced monitoring and metrics
+- [ ] Local persistence layer
+
+**Phase 3 (Week 5-6)**: Production deployment
+- [ ] Comprehensive testing suite
+- [ ] Kubernetes deployment configuration
+- [ ] Security enhancements
+- [ ] Performance optimizations
+
+**Success Metrics**:
+- Webhook response time < 200ms (currently ~2s)
+- 99.9% uptime under load
+- Zero webhook timeouts from Telegram
+- Horizontal scaling to 10+ instances
+- Complete error recovery and retry logic
+
+---
+
 ## Roadmap
 
 * [x] **Telegram MVP working end-to-end** ✅
@@ -451,11 +608,12 @@ export DRY_RUN=false
   - ✅ Parse and hydrate based on available context  
   - ✅ Save to Notion
   - ✅ Performance optimization with Smart Pipeline
+* [ ] **Production Architecture** (P0 items from TODO above)
 * [ ] Cron-based Notion hydrator
 * [ ] Add enrichment: venue details, map links
 * [ ] Web UI with calendar + filters
 * [ ] Add email/Instagram input support
-* [ ] Event search flow: user inputs event name -> web fetch known sources + web search engines -> confirm with user via telegram -> validate -> save -> confirm to user
+* [ ] Event search flow: user inputs event name -> web fetch known sources + web search engines -> confirm with user via telegram -> validate → save → confirm to user
 
 ---
 
