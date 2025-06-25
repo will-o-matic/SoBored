@@ -28,6 +28,10 @@ python test_url_parse.py "Concert tonight at 8pm"
 
 # Compare both systems
 python run_comparison_experiment.py  # Compare performance
+
+# Test with dry-run mode (no actual Notion saves)
+DRY_RUN=true python test_smart_pipeline.py  # Test without API calls
+DRY_RUN=true python test_url_parse.py "https://example.com/event"
 ```
 
 ### Development Utilities
@@ -51,6 +55,7 @@ python -m utils.notion_dev_utils clean-database <id> --dry-run      # Test clean
   ANTHROPIC_API_KEY=your-claude-api-key
   LANGSMITH_API_KEY=your-langsmith-api-key
   USE_SMART_PIPELINE=false  # Set to 'true' to enable optimized pipeline
+  DRY_RUN=false  # Set to 'true' to enable dry-run mode (no actual Notion API calls)
   ```
 - Set Telegram webhook: `https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://abc123.ngrok.io/telegram/webhook`
 - Set up Notion integration and database using `python test_run_graph.py`
