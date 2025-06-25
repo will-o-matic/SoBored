@@ -205,7 +205,7 @@ def test_agent_flow(
                 # Parse and display key information from agent output
                 if dry_run:
                     print_section("🧪 DRY-RUN RESULTS", color=Colors.WARNING)
-                    if "dry_run_save_to_notion" in agent_output.lower() or "would_save_properties" in agent_output.lower():
+                    if "dry-run" in agent_output.lower() or "would_save_properties" in agent_output.lower() or "dry_run_success" in agent_output.lower():
                         print(f"{Colors.OKGREEN}✓ Event parsed and would be saved to Notion (DRY-RUN){Colors.ENDC}")
                         # Try to extract the dry-run save information
                         dry_run_info = extract_dry_run_info_from_output(agent_output)

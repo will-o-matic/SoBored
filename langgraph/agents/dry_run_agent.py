@@ -12,7 +12,7 @@ from langchain_core.prompts import PromptTemplate
 from langchain_anthropic import ChatAnthropic
 
 from .tools import classify_input, fetch_url_content, parse_url_content
-from .tools.dry_run_save_notion_tool import dry_run_save_to_notion
+from .tools.save_notion_tool import save_to_notion
 from ..observability.langsmith_config import create_langsmith_config
 from ..observability.structured_logging import ReActAgentLogger
 
@@ -21,8 +21,9 @@ class DryRunEventProcessingAgent:
     """
     Dry-run ReAct agent for testing event processing without committing to Notion.
     
-    This agent uses the same pipeline as the main agent but replaces save_to_notion
-    with dry_run_save_to_notion to show what would be saved without making API calls.
+    This agent uses the same tools as the main agent, but ensures dry-run mode is enabled
+    by setting DRY_RUN=true in the environment. The unified save_to_notion tool will
+    automatically perform mock saves without making actual API calls.
     """
     
     def __init__(self, api_key: str, model: str = "claude-3-haiku-20240307"):
@@ -33,7 +34,11 @@ class DryRunEventProcessingAgent:
             api_key: Anthropic API key
             model: Claude model to use for reasoning
         """
-        print("[DRY-RUN AGENT] Initializing dry-run agent with mock tools")
+        import os
+        
+        # Ensure dry-run mode is enabled for this agent
+        os.environ["DRY_RUN"] = "true"
+        print("[DRY-RUN AGENT] Initializing dry-run agent with DRY_RUN=true")
         self.llm = ChatAnthropic(
             model=model,
             api_key=api_key,
@@ -44,12 +49,12 @@ class DryRunEventProcessingAgent:
         self.logger = ReActAgentLogger("dry_run_event_processor")
         self.langsmith_config = create_langsmith_config()
         
-        # Available tools for the agent (using dry-run save instead of real save)
+        # Available tools for the agent (using unified save tool with dry-run mode)
         self.tools = [
             classify_input,
             fetch_url_content,
             parse_url_content,
-            dry_run_save_to_notion  # This is the key difference from regular agent
+            save_to_notion  # Now uses unified tool that respects DRY_RUN environment variable
         ]
         
         print(f"[DRY-RUN AGENT] Available tools: {[tool.name for tool in self.tools]}")
@@ -139,7 +144,7 @@ Raw Input: {raw_input}
 Source: {source}
 Pre-classified Type: {input_type or 'Not specified'}{user_info}
 
-Please classify, process, and show what event information would be saved to Notion. Use dry_run_save_to_notion instead of save_to_notion to avoid making actual API calls. Include the user_id in the event data when showing what would be saved."""
+Please classify, process, and show what event information would be saved to Notion. The save_to_notion tool is configured for dry-run mode and will automatically perform mock saves without making actual API calls. Include the user_id in the event data when showing what would be saved."""
             }
             
             # Run the agent executor with LangSmith configuration

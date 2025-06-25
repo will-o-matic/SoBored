@@ -311,14 +311,16 @@ class TextProcessor(BaseProcessor):
                 "user_id": event_data.get("user_id")
             }
             
+            # Set environment variable for dry-run mode if needed
+            import os
             if self.dry_run:
-                # Use dry run save tool
-                from langgraph.agents.tools.dry_run_save_notion_tool import dry_run_save_to_notion
-                return dry_run_save_to_notion.invoke({"event_data": notion_data})
+                os.environ["DRY_RUN"] = "true"
             else:
-                # Use real save tool
-                from langgraph.agents.tools.save_notion_tool import save_to_notion
-                return save_to_notion.invoke({"event_data": notion_data})
+                os.environ["DRY_RUN"] = "false"
+            
+            # Use unified save tool that respects DRY_RUN environment variable
+            from langgraph.agents.tools.save_notion_tool import save_to_notion
+            return save_to_notion.invoke({"event_data": notion_data})
                 
         except Exception as e:
             logger.error(f"Save operation failed: {e}")
