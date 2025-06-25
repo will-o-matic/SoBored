@@ -114,7 +114,25 @@ Total Sessions: 3
 
 ---
 
+## 📝 Tool Architecture Update (2025-06-25)
+
+Following the schema update, the Notion tools were refactored to eliminate code duplication:
+
+### Changes Made
+- **Unified Tool**: `save_to_notion` now handles both real and dry-run modes
+- **Removed Duplication**: `dry_run_save_to_notion` tool deleted (400+ lines eliminated)
+- **Environment Control**: `DRY_RUN=true/false` controls save behavior
+- **Single Source**: All Notion save logic now in `NotionSaver` class
+
+### Benefits
+- **Maintainability**: Schema changes only need updates in one place
+- **Testing**: `DRY_RUN=true` enables safe testing with new schema
+- **Consistency**: Real and mock saves use identical logic
+
+---
+
 **Schema Update Status**: ✅ Complete  
+**Tool Unification Status**: ✅ Complete  
 **Database ID**: `21a20198-96f6-81c8-972a-df9330af9d71`  
 **Total Properties**: 14 (4 new fields added)  
 **Migration Script**: `python update_notion_schema.py`

@@ -417,6 +417,31 @@ Compare performance:
 python run_comparison_experiment.py
 ```
 
+### v1.1.0 - Unified Tool Architecture (2025-06-25)
+
+🔧 **Developer Experience Enhancement**: Refactored tool architecture to eliminate code duplication and improve maintainability.
+
+#### ⚡ **Architecture Improvements**
+- **Unified Notion Tool**: Single `save_to_notion` tool replaces duplicate `dry_run_save_to_notion`
+- **Environment-Driven Behavior**: `DRY_RUN=true/false` controls mock vs real Notion saves
+- **Composition Pattern**: Configurable NotionSaver class with shared business logic
+- **Code Reduction**: Eliminated 400+ lines of duplicated code
+
+#### 🛠️ **Developer Benefits**
+- **Single Source of Truth**: All Notion save logic in one place
+- **Easier Testing**: `DRY_RUN=true` enables safe testing without API calls
+- **Better Maintainability**: Changes only need to be made in one location
+- **LangChain Best Practices**: Follows composition over duplication patterns
+
+Control dry-run mode:
+```bash
+# Test mode - no actual Notion API calls
+export DRY_RUN=true
+
+# Production mode - real Notion saves
+export DRY_RUN=false
+```
+
 ---
 
 ## Roadmap

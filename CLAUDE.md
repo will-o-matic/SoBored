@@ -66,6 +66,12 @@ python -m utils.notion_dev_utils clean-database <id> --dry-run      # Test clean
 - Always add to `requirements.txt` when adding new packages
 - Ensure all team members have consistent dependencies
 
+### Tool Architecture
+- **Unified Notion Tool**: Single `save_to_notion` tool handles both real and dry-run modes
+- **Environment-Driven**: Use `DRY_RUN=true` for testing, `DRY_RUN=false` for production
+- **Composition Pattern**: `NotionSaver` class provides configurable save behavior
+- **Testing**: Always test changes with `DRY_RUN=true` before real deployment
+
 ## Architecture Overview
 
 This is a smart event aggregator with **dual processing modes**:
