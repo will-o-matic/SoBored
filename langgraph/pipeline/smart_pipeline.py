@@ -14,6 +14,7 @@ from langsmith.run_trees import RunTree
 from .classifiers.smart_classifier import SmartClassifier
 from .processors.url_processor import URLProcessor
 from .processors.text_processor import TextProcessor
+from .processors.image_processor import ImageProcessor
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,7 @@ class SmartEventPipeline:
             "url": URLProcessor(dry_run=dry_run),
             "text": TextProcessor(dry_run=dry_run),
             "email": TextProcessor(dry_run=dry_run),  # Treat emails as text for now
+            "image": ImageProcessor(dry_run=dry_run),
         }
         self.pipeline_stats = {
             "total_processed": 0,
@@ -47,7 +49,7 @@ class SmartEventPipeline:
         }
     
     def process_event_input(self, raw_input: str, source: str = "telegram", 
-                           user_id: Optional[str] = None) -> Dict[str, Any]:
+                           user_id: Optional[str] = None, telegram_data: Optional[Dict] = None) -> Dict[str, Any]:
         """
         Main entry point for smart pipeline processing with proper LangSmith tracing
         
@@ -55,6 +57,7 @@ class SmartEventPipeline:
             raw_input: Raw input content (URL, text, etc.)
             source: Source of the input (telegram, web, etc.)
             user_id: Optional user identifier
+            telegram_data: Optional Telegram-specific data for image processing
             
         Returns:
             Dict containing complete processing results
@@ -93,6 +96,11 @@ class SmartEventPipeline:
             classification_run.post()
             
             classified_input = self.classifier.classify(raw_input)
+            
+            # Add telegram_data to classified_input if available (for image processing)
+            if telegram_data:
+                classified_input["telegram_data"] = telegram_data
+            
             classification_time = time.time() - classification_start
             
             classification_run.end(outputs=classified_input)
@@ -264,7 +272,8 @@ def should_use_smart_pipeline() -> bool:
 
 
 def process_with_smart_pipeline(raw_input: str, source: str = "telegram", 
-                               user_id: Optional[str] = None, dry_run: bool = False) -> Dict[str, Any]:
+                               user_id: Optional[str] = None, dry_run: bool = False,
+                               telegram_data: Optional[Dict] = None) -> Dict[str, Any]:
     """
     Convenience function for processing with smart pipeline
     
@@ -273,9 +282,10 @@ def process_with_smart_pipeline(raw_input: str, source: str = "telegram",
         source: Source of the input
         user_id: Optional user identifier
         dry_run: Whether to run in dry-run mode
+        telegram_data: Optional Telegram-specific data for image processing
         
     Returns:
         Processing results
     """
     pipeline = create_smart_pipeline(dry_run=dry_run)
-    return pipeline.process_event_input(raw_input, source, user_id)
+    return pipeline.process_event_input(raw_input, source, user_id, telegram_data)

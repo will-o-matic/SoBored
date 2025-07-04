@@ -33,9 +33,18 @@ async def handle_webhook(payload: TelegramMessage):
     if "photo" in message:
         input_type = "image"  # Pre-classify images since we can detect them from webhook
         raw_input = "[image uploaded]"
+        
+        # Add image metadata for processing
+        telegram_data = {
+            "photo": message["photo"],
+            "chat_id": chat_id,
+            "message_id": message.get("message_id"),
+            "caption": message.get("caption", "")  # Image caption if provided
+        }
     else:
         input_type = None  # Let LangGraph classify text/URLs
         raw_input = text
+        telegram_data = None
 
     # Use context manager for tracking message processing
     with telegram_logger.track_message_processing(raw_input) as session_id:
@@ -45,7 +54,8 @@ async def handle_webhook(payload: TelegramMessage):
                 raw_input=raw_input,
                 source="telegram",
                 input_type=input_type,
-                user_id=user_id
+                user_id=user_id,
+                telegram_data=telegram_data  # Pass Telegram image data if available
             )
             
             # Extract response from agent output - handle both ReAct agent and Smart Pipeline
@@ -58,7 +68,19 @@ async def handle_webhook(payload: TelegramMessage):
                 "notion_page_id" in result and result.get("notion_page_id")  # Alternative success check
             ]
             
-            if any(success_indicators) and not result.get("error"):
+            # Check if confirmation is required (for image processing)
+            if result.get("confirmation_required", False):
+                confirmation_message = result.get("confirmation_message", "")
+                if confirmation_message:
+                    response_message = confirmation_message
+                else:
+                    response_message = "📋 Please confirm the extracted event details before saving."
+                
+                # Store pending confirmation data for this user
+                # TODO: Implement proper session storage (Redis, database, etc.)
+                # For now, just send the confirmation message
+                
+            elif any(success_indicators) and not result.get("error"):
                 # Extract meaningful information for user response
                 event_title = result.get("event_title", "")
                 notion_url = result.get("notion_url", "")

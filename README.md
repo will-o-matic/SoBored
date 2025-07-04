@@ -285,6 +285,7 @@ Use dry-run mode when you want to:
 | Chat Interface | Telegram Bot (MVP), Web UI (Future) |
 | Orchestration | [LangGraph](https://github.com/langchain-ai/langgraph) |
 | Parsing / NLP | [LangChain](https://www.langchain.com/) tools + custom logic |
+| Image Processing | Tesseract OCR + Pillow + custom preprocessing |
 | Event Storage | Notion database via API (MCP optional later) |
 | Deployment | Vercel (API endpoints + front-end) |
 
@@ -293,7 +294,9 @@ Use dry-run mode when you want to:
 ## MVP Features
 
 - Users can send **text, images, or URLs** to the Telegram bot.
-- System parses event info (title, date, location, etc.) from the input.
+- **Image Processing**: OCR text extraction from event flyers with quality validation.
+- **Smart Event Parsing**: Multi-date support, recurrence detection, and intelligent extraction.
+- **User Confirmation**: Interactive confirmation workflow for uncertain extractions.
 - Structured event data is saved to a **Notion database**.
 - Bot replies with a confirmation (or error handling if info is missing).
 
@@ -310,7 +313,7 @@ Use dry-run mode when you want to:
 
 ```text
 Input → Classify →
-  → Image → OCR → Parse → Validate
+  → Image → OCR → Quality Check → Parse → Validate → Confirm (if needed)
   → Text → Parse → Validate
   → URL → Scrape → Parse → Validate
 → Deduplicate
@@ -370,9 +373,11 @@ Each step is a LangGraph node (LangChain tools, custom code, or API call). All s
 
 | Input                                   | Behavior                                               |
 | --------------------------------------- | ------------------------------------------------------ |
-| Flyer image                             | OCR → parse → save → reply: "Added *Live Jazz at 8pm*" |
-| Text: "Art show at Dolores Park on Sat" | NLP → save → reply with confirmation                   |
-| URL                                     | Scrape → parse → validate → save → reply with confirmation  |
+| Flyer image                             | OCR → quality check → parse → confirm → save → reply: "Added *Live Jazz at 8pm*" |
+| Event poster (poor quality)            | OCR → quality check → request clearer image or manual entry |
+| Multi-date event image                 | OCR → parse → confirm multiple dates → save with session linking |
+| Text: "Art show at Dolores Park on Sat" | NLP → parse → save → reply with confirmation |
+| URL                                     | Scrape → parse → validate → save → reply with confirmation |
 
 ---
 
@@ -441,6 +446,57 @@ export DRY_RUN=true
 # Production mode - real Notion saves
 export DRY_RUN=false
 ```
+
+### v1.2.0 - Image Processing & OCR Integration (2025-07-04)
+
+🖼️ **Major Feature Addition**: Complete image processing pipeline with OCR, event extraction, and user confirmation workflow.
+
+#### 🎯 **New Image Processing Capabilities**
+- **OCR Text Extraction**: Tesseract-based OCR with quality validation
+- **Smart Image Classification**: Instant detection of image inputs in 3-tier system
+- **Specialized Image Processor**: Dedicated processor optimized for flyer/poster analysis
+- **User Confirmation Workflow**: Intelligent confirmation prompts for uncertain extractions
+- **Multi-Date & Recurrence Support**: Enhanced extraction for complex event patterns
+
+#### 🔧 **Technical Enhancements**
+- **Image Processor Class**: Full-featured processor following existing patterns
+- **OCR Tools**: Robust text extraction with preprocessing and error correction
+- **Quality Assessment**: Confidence scoring and reliability validation
+- **Telegram Integration**: Seamless image upload handling with metadata preservation
+- **Smart Pipeline Integration**: Image processing integrated into optimized pipeline
+
+#### 📱 **User Experience**
+- **Automatic OCR**: Text extracted from uploaded images automatically
+- **Quality Feedback**: Clear messaging when image quality is insufficient
+- **Confirmation Prompts**: User-friendly confirmation for extracted event details
+- **Multi-Date Handling**: Proper extraction of multiple dates and recurring patterns
+- **Error Recovery**: Graceful handling of poor image quality or failed OCR
+
+#### 🛠️ **Dependencies Added**
+```bash
+pip install pytesseract Pillow
+# Note: Requires tesseract-ocr system package installation
+```
+
+#### 📋 **Usage Examples**
+```bash
+# Test image processing pipeline
+python test_image_processing.py ./event_flyer.jpg --dry-run
+
+# Interactive testing mode
+python test_image_processing.py --interactive
+
+# OCR quality validation only
+python test_image_processing.py ./image.png --ocr-only
+```
+
+#### 🔄 **Image Processing Flow**
+1. **Upload**: User sends image via Telegram
+2. **OCR**: Text extracted with quality assessment
+3. **Parse**: Event details extracted using LLM with OCR context
+4. **Validate**: Quality and completeness scoring
+5. **Confirm**: User confirmation for uncertain extractions
+6. **Save**: Event saved to Notion with OCR metadata
 
 ---
 

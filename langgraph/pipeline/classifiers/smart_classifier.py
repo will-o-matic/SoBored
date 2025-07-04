@@ -64,7 +64,19 @@ class SmartClassifier:
         """Regex/heuristic based classification"""
         raw_input = raw_input.strip()
         
-        # Check for URLs first (most common case)
+        # Check for image indicators first (highest priority for explicit image inputs)
+        if self._is_image_input(raw_input):
+            classification = "image"
+            confidence = self._get_image_confidence(raw_input)
+            return {
+                "input_type": classification,
+                "raw_input": raw_input,
+                "confidence": confidence,
+                "method": "tier1_regex",
+                "reasoning": "Image input detected"
+            }
+        
+        # Check for URLs (most common case)
         if self._is_url(raw_input):
             classification = "url"
             confidence = get_classification_confidence(raw_input, "url")
@@ -174,6 +186,47 @@ class SmartClassifier:
         # Require at least 2 out of 3 pattern types for high confidence
         pattern_count = sum([bool(has_event_keywords), bool(has_date_time), bool(has_location)])
         return pattern_count >= 2
+    
+    def _is_image_input(self, text: str) -> bool:
+        """Check if input indicates an image"""
+        # Check for common image indicators
+        image_indicators = [
+            "[image uploaded]",
+            "[photo]",
+            "[picture]",
+            "image:",
+            "photo:",
+            "picture:"
+        ]
+        
+        text_lower = text.lower()
+        for indicator in image_indicators:
+            if indicator in text_lower:
+                return True
+        
+        # Check for image file extensions
+        image_extensions = [".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".tiff"]
+        for ext in image_extensions:
+            if text_lower.endswith(ext):
+                return True
+        
+        return False
+    
+    def _get_image_confidence(self, text: str) -> float:
+        """Get confidence score for image classification"""
+        text_lower = text.lower()
+        
+        # High confidence indicators
+        if "[image uploaded]" in text_lower:
+            return 0.95
+        elif any(indicator in text_lower for indicator in ["[photo]", "[picture]"]):
+            return 0.90
+        elif any(text_lower.endswith(ext) for ext in [".jpg", ".jpeg", ".png", ".gif"]):
+            return 0.85
+        elif any(prefix in text_lower for prefix in ["image:", "photo:", "picture:"]):
+            return 0.80
+        else:
+            return 0.70
     
     def get_stats(self) -> Dict[str, any]:
         """Get classification statistics"""

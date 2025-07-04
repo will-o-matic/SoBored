@@ -53,7 +53,8 @@ def process_event_input(
     source: str = "unknown", 
     input_type: Optional[str] = None,
     dry_run: bool = False,
-    user_id: Optional[str] = None
+    user_id: Optional[str] = None,
+    telegram_data: Optional[Dict] = None
 ) -> Dict[str, Any]:
     """
     Process event input using smart pipeline or ReAct agent based on feature flags.
@@ -64,6 +65,7 @@ def process_event_input(
         input_type: Pre-classified input type (optional, used by ReAct agent)
         dry_run: If True, use dry-run mode that doesn't save to Notion
         user_id: User ID from Telegram or other source (optional)
+        telegram_data: Optional Telegram-specific data (for image downloads, etc.)
         
     Returns:
         Dict containing processing results
@@ -90,7 +92,8 @@ def process_event_input(
                 raw_input=raw_input,
                 source=source,
                 user_id=user_id,
-                dry_run=dry_run
+                dry_run=dry_run,
+                telegram_data=telegram_data
             )
             
             # Add session metadata for compatibility
