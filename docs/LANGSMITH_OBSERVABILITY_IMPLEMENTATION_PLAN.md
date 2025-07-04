@@ -104,25 +104,43 @@ Parse URL Content (tool)
 **Timeline:** 1-2 days  
 **Impact:** HIGH - Enables prompt versioning & testing
 
-#### 2.1 Create LangSmith Prompt Templates
+**Architectural Decision:** Keep prompts in version control with optional LangSmith override for experiments.
+
+**Rationale:** Prompts are application logic that determine data extraction accuracy and business outcomes. They must be versioned with code for deployment integrity and operational stability.
+
+#### 2.1 Extract & Version Control Prompts
 **Action Items:**
 1. Extract hardcoded prompt from `parse_url_tool.py:48-86`
-2. Create "event-extraction-prompt" template in LangSmith UI
-3. Use f-string format with variables: `{current_date}`, `{webpage_title}`, `{webpage_content}`
+2. Create versioned prompt files: `prompts/event_extraction_v1.py`
+3. Implement semantic versioning for prompt changes
+4. Add prompt loading utilities with fallback logic
 
-#### 2.2 Implement Prompt Template Loading
+#### 2.2 Implement Hybrid Prompt System
 **New Code:**
 ```python
 from langsmith import Client
+from prompts.event_extraction import get_event_extraction_prompt_v1
 
-def load_event_extraction_prompt() -> Any:
-    """Load versioned prompt template from LangSmith."""
-    client = Client()
-    return client.pull_prompt("event-extraction-prompt")
+def load_event_extraction_prompt() -> str:
+    """Load prompt with version control primary, LangSmith experiments optional."""
+    # Default: version-controlled prompt (always available)
+    base_prompt = get_event_extraction_prompt_v1()
+    
+    # Optional: LangSmith override for controlled experiments
+    if feature_flag_enabled("prompt_experiments"):
+        try:
+            client = Client()
+            experimental_prompt = client.pull_prompt("event-extraction-experiment")
+            return experimental_prompt.format_prompt()
+        except Exception:
+            # Fallback to version-controlled prompt
+            pass
+    
+    return base_prompt
 
 @traceable(run_type="tool")
 def parse_url_content(webpage_content: str, webpage_title: str = "Untitled") -> dict:
-    # Load versioned prompt template
+    # Load hybrid prompt (version control + optional experiments)
     prompt_template = load_event_extraction_prompt()
     
     # Format with variables
@@ -137,12 +155,37 @@ def parse_url_content(webpage_content: str, webpage_title: str = "Untitled") -> 
     return extract_event_with_claude(formatted_prompt)
 ```
 
-#### 2.3 Enable Prompt Versioning
+#### 2.3 Enable Controlled Experimentation
+**Hybrid Architecture Benefits:**
+- **Production Stability:** Version controlled prompts ensure reliable deployments
+- **Experimentation:** LangSmith A/B testing for prompt optimization
+- **Atomic Deployments:** Code + prompts version together
+- **Fail-Safe Operation:** System works without LangSmith dependency
+- **Promotion Path:** Experiment → validate → commit to version control → deploy
+
+#### 2.4 Prompt Versioning Workflow
+**Implementation:**
+```python
+# prompts/event_extraction.py
+def get_event_extraction_prompt_v1() -> str:
+    """Version 1.0 - Initial event extraction prompt."""
+    return """Today is {current_date} ({current_day}).
+    
+Parse the following webpage content for events...
+[Full prompt text with semantic version]
+"""
+
+def get_event_extraction_prompt_v2() -> str:
+    """Version 2.0 - Improved accuracy for recurring events."""
+    return """Enhanced prompt with better event detection..."""
+```
+
 **Benefits:**
-- Version control for prompts with commit history
-- A/B testing different prompt versions
-- Non-technical team members can iterate prompts
-- Rollback capability for prompt regressions
+- Git history tracks all prompt changes
+- Semantic versioning for prompt evolution  
+- Code review process for prompt modifications
+- Rollback capability with full system state
+- Environment consistency guaranteed
 
 ### Phase 3: Enhanced Error Observability (Priority 3)  
 **Timeline:** 2-3 days  
@@ -270,10 +313,11 @@ def process_with_smart_pipeline(raw_input: str, source: str, user_id: str, dry_r
 - [ ] Verify prompt/response capture
 
 ### Phase 2: Short-term (1-2 days)  
-- [ ] Extract hardcoded prompt to LangSmith template
-- [ ] Implement prompt template loading logic
-- [ ] Test prompt versioning workflow
-- [ ] Set up prod/dev prompt tags
+- [ ] Extract hardcoded prompt to version-controlled files
+- [ ] Implement hybrid prompt loading system (git + LangSmith experiments)
+- [ ] Create prompt versioning utilities with semantic versions
+- [ ] Set up feature flag for experimental prompt override
+- [ ] Test version control → experiment → promotion workflow
 
 ### Phase 3: Medium-term (2-3 days)
 - [ ] Implement traced fallback logic
@@ -318,9 +362,11 @@ def process_with_smart_pipeline(raw_input: str, source: str, user_id: str, dry_r
 - ✅ Model parameters logged (temperature, max_tokens)
 
 ### Short-term (Post Phase 2)  
-- ✅ Prompt versioning with commit history
-- ✅ A/B testing capability for prompts
-- ✅ Non-technical team access to prompt iteration
+- ✅ Prompt versioning in git with semantic versions
+- ✅ Hybrid system: version control primary + LangSmith experiments
+- ✅ A/B testing capability without production risk
+- ✅ Atomic deployment integrity maintained
+- ✅ Fail-safe operation without external dependencies
 
 ### Medium-term (Post Phase 3-4)
 - ✅ Complete error trace hierarchy
