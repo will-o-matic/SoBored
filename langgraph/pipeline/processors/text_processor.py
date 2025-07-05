@@ -171,10 +171,15 @@ class TextProcessor(BaseProcessor):
             - When parsing dates without explicit years (like "June 25th"), assume the current year {current_year}
             - For past dates in the current year or dates that seem to refer to future events, use {current_year}
             
-            MULTI-DATE EXTRACTION RULES:
-            - If you see EXPLICIT multiple dates listed (like "June 24, June 26, and June 28"), extract ALL dates
-            - Format each date as YYYY-MM-DD HH:MM and separate with commas
-            - Use the same time for all dates if only one time is specified
+            SINGLE DATE RULE (CRITICAL):
+            - ONLY extract ONE date unless you see EXPLICIT multiple separate events
+            - Even if text says "Saturday, September 13" - this is ONE date, not two  
+            - Format as YYYY-MM-DD HH:MM (single string, NO commas)
+            - DO NOT use commas in date field unless truly multiple separate events
+            
+            MULTI-DATE EXTRACTION (RARE):
+            - Only if you see TRULY SEPARATE events: "Show on June 24 AND another show on June 26"
+            - Format as separate dates with commas ONLY then: "2025-06-24 19:00, 2025-06-26 19:00"
             - For RECURRING patterns (every X, weekly, daily for N weeks), extract only the START date
             - IMPORTANT: Only extract dates for the ACTUAL event, NOT mentioned dates like "rescheduled from" or "originally planned for"
             

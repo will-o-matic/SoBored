@@ -79,9 +79,15 @@ class ImageProcessor(BaseProcessor):
             validation_result = self._validate_extracted_data(parsed_result)
             
             # Step 5: Check if user confirmation is needed
+            print(f"[DEBUG] OCR confidence: {ocr_result.get('confidence', 0.0)}")
+            print(f"[DEBUG] Parsing confidence: {parsed_result.get('parsing_confidence', 0.0)}")
+            print(f"[DEBUG] Validation score: {validation_result.get('validation_score', 0.0)}")
+            
             confirmation_result = self._assess_confirmation_need(
                 ocr_result, ocr_validation, parsed_result, validation_result
             )
+            
+            print(f"[DEBUG] Confirmation result: {confirmation_result}")
             
             # Step 6: Save to Notion (or dry run) if no confirmation needed
             if not confirmation_result.get("confirmation_required", False):
@@ -337,12 +343,14 @@ class ImageProcessor(BaseProcessor):
             - parsing_confidence: Confidence score between 0.0 and 1.0
             - ocr_corrections: List of any obvious OCR errors you corrected
             
-            CRITICAL PARSING RULES:
-            - The EVENT TITLE is the main event name (like "Preservation Fall Fest"), NOT performer names
+            CRITICAL PARSING RULES FOR OCR TEXT:
+            - The EVENT TITLE is the main event name (like "5th Annual Preservation Fall Fest"), NOT performer names
+            - Clean up OCR errors in the title: "sth" → "5th", fix obvious typos
             - Individual performers/bands should go in DESCRIPTION, not the title
             - If you see performer names, format as "featuring [performers]" in description
             - Look for venue information (campus names, buildings, addresses, city/state)
             - Extract door times, ticket info, age restrictions for description
+            - Be very careful to parse fields correctly - don't mix up title/date/location
             - Only extract ONE date unless you see EXPLICIT multiple dates listed
             
             IMPORTANT OCR CONTEXT:
@@ -358,18 +366,28 @@ class ImageProcessor(BaseProcessor):
             - If date seems past but event is likely future, use {current_year}
             - Convert "6PM" to "18:00" format
             
-            EXAMPLE FOR THIS TYPE OF TEXT:
-            Input: "5TH ANNUAL PRESERVATION FALL FEST featuring Joe Hertler & The Rainbow Seekers"
-            Output:
-            - event_title: "5th Annual Preservation Fall Fest"
-            - event_description: "Featuring Joe Hertler & The Rainbow Seekers, Pajamas, and Same Eyes"
+            CORRECT PARSING EXAMPLE:
+            Input: "sth ANNUAL PRESERVATION FALL FEST FEATURING JOE HERTLER & THE RAINBOW SEEKERS PAJAMAS AND SAME EYES LIVE AT HOMES CAMPUS ANN ARBOR MI SATURDAY, SEPTEMBER 13 ALL AGES DOORS AT 6PM"
+            Correct Output:
+            {{
+                "event_title": "5th Annual Preservation Fall Fest",
+                "event_date": "2025-09-13 18:00",
+                "event_location": "Homes Campus, Ann Arbor, MI", 
+                "event_description": "Featuring Joe Hertler & The Rainbow Seekers, Pajamas, and Same Eyes. All ages. Doors at 6PM.",
+                "parsing_confidence": 0.9,
+                "ocr_corrections": ["sth → 5th", "DooRS → DOORS"]
+            }}
             
-            MULTI-DATE EXTRACTION RULES:
-            - If you see EXPLICIT multiple dates listed (like "June 24, June 26, and June 28"), extract ALL dates
-            - Format each date as YYYY-MM-DD HH:MM and separate with commas
-            - Use the same time for all dates if only one time is specified
-            - For RECURRING patterns (every X, weekly, daily for N weeks), extract only the START date
-            - IMPORTANT: Only extract dates for the ACTUAL event, NOT mentioned dates like "rescheduled from" or "originally planned for"
+            SINGLE DATE RULE (CRITICAL):
+            - ONLY extract ONE date unless you see EXPLICIT multiple separate events
+            - Even if text says "SATURDAY, SEPTEMBER 13" - this is ONE date, not two
+            - Format as YYYY-MM-DD HH:MM (single string, NO commas)
+            - "SATURDAY, SEPTEMBER 13 at 6PM" becomes "2025-09-13 18:00"
+            - DO NOT use commas in date field unless truly multiple separate events
+            
+            MULTI-DATE EXTRACTION (RARE):
+            - Only if you see TRULY SEPARATE events: "Show on June 24 AND another show on June 26"
+            - Format as separate dates with commas ONLY then: "2025-06-24 19:00, 2025-06-26 19:00"
             
             RECURRENCE PATTERN DETECTION:
             - Look for patterns like "every Monday", "weekly", "daily", "recurring"
@@ -432,6 +450,9 @@ class ImageProcessor(BaseProcessor):
                         result[key] = value.strip()
                 
                 logger.debug(f"Cleaned parsing result: {result}")
+                
+                # Add success flag for successful parsing
+                result['success'] = True
                 
                 return result
                 
