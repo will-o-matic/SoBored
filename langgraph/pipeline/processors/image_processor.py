@@ -217,9 +217,10 @@ class ImageProcessor(BaseProcessor):
         """
         try:
             # Use the OCR tool we created
-            from langgraph.agents.tools.ocr_tool import extract_text_from_image
+            from langgraph.agents.tools.easyocr_tool import extract_text_with_hybrid_ocr
             
-            result = extract_text_from_image.invoke({
+            # Use hybrid OCR for best results (EasyOCR + Tesseract comparison)
+            result = extract_text_with_hybrid_ocr.invoke({
                 "image_data": image_data,
                 "image_format": "auto"
             })
