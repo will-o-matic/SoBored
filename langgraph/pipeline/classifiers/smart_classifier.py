@@ -189,17 +189,18 @@ class SmartClassifier:
     
     def _is_image_input(self, text: str) -> bool:
         """Check if input indicates an image"""
-        # Check for common image indicators
+        text_lower = text.lower()
+        
+        # Check for common image indicators (flexible matching)
         image_indicators = [
-            "[image uploaded]",
-            "[photo]",
-            "[picture]",
+            "[image uploaded",  # Matches "[image uploaded]" and "[image uploaded: filename]"
+            "[photo",
+            "[picture",
             "image:",
             "photo:",
             "picture:"
         ]
         
-        text_lower = text.lower()
         for indicator in image_indicators:
             if indicator in text_lower:
                 return True
@@ -217,9 +218,9 @@ class SmartClassifier:
         text_lower = text.lower()
         
         # High confidence indicators
-        if "[image uploaded]" in text_lower:
+        if "[image uploaded" in text_lower:  # Matches "[image uploaded]" and with filename
             return 0.95
-        elif any(indicator in text_lower for indicator in ["[photo]", "[picture]"]):
+        elif any(indicator in text_lower for indicator in ["[photo", "[picture"]):
             return 0.90
         elif any(text_lower.endswith(ext) for ext in [".jpg", ".jpeg", ".png", ".gif"]):
             return 0.85

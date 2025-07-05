@@ -162,29 +162,41 @@ class ImageProcessor(BaseProcessor):
             largest_photo = max(photos, key=lambda x: x.get("file_size", 0))
             file_id = largest_photo["file_id"]
             
-            # Download using Telegram bot
+            # Download using direct HTTP requests to avoid async issues
             import os
-            from telegram import Bot
+            import requests
+            import tempfile
             
             bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
             if not bot_token:
                 raise ValueError("TELEGRAM_BOT_TOKEN not configured")
             
-            bot = Bot(token=bot_token)
+            # Get file information using Telegram Bot API
+            file_info_url = f"https://api.telegram.org/bot{bot_token}/getFile"
+            file_response = requests.get(file_info_url, params={"file_id": file_id})
+            file_response.raise_for_status()
             
-            # Get file information
-            file_info = bot.get_file(file_id)
+            file_data = file_response.json()
+            if not file_data.get("ok"):
+                raise ValueError(f"Failed to get file info: {file_data.get('description', 'Unknown error')}")
+            
+            file_path = file_data["result"]["file_path"]
+            
+            # Download the actual file
+            download_url = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
+            image_response = requests.get(download_url, timeout=30)
+            image_response.raise_for_status()
             
             # Create temporary file
-            import tempfile
             temp_file = tempfile.NamedTemporaryFile(
                 suffix=".jpg", 
                 delete=False,
                 dir="/tmp"
             )
             
-            # Download image
-            file_info.download(temp_file.name)
+            # Write image data to file
+            temp_file.write(image_response.content)
+            temp_file.close()
             
             logger.debug(f"Downloaded Telegram image to {temp_file.name}")
             return temp_file.name
@@ -315,26 +327,41 @@ class ImageProcessor(BaseProcessor):
             current_year = current_date.year
             
             prompt = f"""
-            This text was extracted from an image using OCR and may contain some errors or formatting issues. 
+            This text was extracted from an event flyer/poster using OCR and may contain errors or formatting issues. 
             Extract event information from the following text. Return a JSON object with these fields:
-            - event_title: The name/title of the event
-            - event_date: Date and time (YYYY-MM-DD HH:MM format - if multiple dates, separate with commas)
+            - event_title: The main event name/title (NOT individual band names)
+            - event_date: Date and time (YYYY-MM-DD HH:MM format - SINGLE date only unless explicitly multiple)
             - event_location: Venue/location of the event
-            - event_description: Brief description of the event
+            - event_description: Brief description including performers and event details
             - parsing_confidence: Confidence score between 0.0 and 1.0
             - ocr_corrections: List of any obvious OCR errors you corrected
             
+            CRITICAL PARSING RULES:
+            - The EVENT TITLE is the main event name (like "Preservation Fall Fest"), NOT performer names
+            - Individual performers/bands should go in DESCRIPTION, not the title
+            - If you see performer names, format as "featuring [performers]" in description
+            - Look for venue information (campus names, buildings, addresses, city/state)
+            - Extract door times, ticket info, age restrictions for description
+            - Only extract ONE date unless you see EXPLICIT multiple dates listed
+            
             IMPORTANT OCR CONTEXT:
             - This text came from an image and may have OCR errors
-            - Common OCR mistakes: O/0, I/1/l, rn/m, etc.
+            - Common mistakes: "ics" might be "Joe", merged words, O/0, I/1/l
             - Be flexible with spelling and formatting
-            - Focus on extracting meaningful information despite potential errors
+            - Focus on extracting meaningful information despite errors
             
             IMPORTANT DATE CONTEXT:
             - Current date: {current_date_str}
             - Current year: {current_year}
-            - When parsing dates without explicit years, assume the current year {current_year}
-            - For dates that appear to be in the past but are likely future events, use {current_year}
+            - When parsing dates without years, assume {current_year}
+            - If date seems past but event is likely future, use {current_year}
+            - Convert "6PM" to "18:00" format
+            
+            EXAMPLE FOR THIS TYPE OF TEXT:
+            Input: "5TH ANNUAL PRESERVATION FALL FEST featuring Joe Hertler & The Rainbow Seekers"
+            Output:
+            - event_title: "5th Annual Preservation Fall Fest"
+            - event_description: "Featuring Joe Hertler & The Rainbow Seekers, Pajamas, and Same Eyes"
             
             MULTI-DATE EXTRACTION RULES:
             - If you see EXPLICIT multiple dates listed (like "June 24, June 26, and June 28"), extract ALL dates
@@ -371,8 +398,42 @@ class ImageProcessor(BaseProcessor):
             # Parse JSON response
             import json
             try:
-                result = json.loads(response.content[0].text)
+                response_text = response.content[0].text.strip()
+                
+                # Clean up common JSON formatting issues
+                response_text = response_text.replace('",\n  ]', '"\n  ]')  # Fix trailing commas in arrays
+                response_text = response_text.replace('"null"', 'null')  # Fix quoted null values
+                response_text = response_text.replace('null,', '"",')  # Replace null with empty string
+                response_text = response_text.replace(': null', ': ""')  # Replace null values with empty strings
+                
+                # Remove any markdown code block markers
+                if response_text.startswith('```json'):
+                    response_text = response_text[7:]
+                if response_text.endswith('```'):
+                    response_text = response_text[:-3]
+                response_text = response_text.strip()
+                
+                result = json.loads(response_text)
+                
+                # Clean up any residual formatting issues in the parsed data
+                for key, value in result.items():
+                    if isinstance(value, str):
+                        # Remove trailing quotes and commas from values
+                        value = value.strip()
+                        if value.endswith('",'):
+                            value = value[:-2]
+                        elif value.endswith('"'):
+                            value = value[:-1]
+                        elif value.endswith(','):
+                            value = value[:-1]
+                        if value.startswith('"'):
+                            value = value[1:]
+                        result[key] = value.strip()
+                
+                logger.debug(f"Cleaned parsing result: {result}")
+                
                 return result
+                
             except json.JSONDecodeError:
                 # If JSON parsing fails, try to extract manually
                 return self._extract_from_response(response.content[0].text)
@@ -420,6 +481,19 @@ class ImageProcessor(BaseProcessor):
                 "event_description": "No text found in image",
                 "requires_user_input": True,
                 "user_message": "I couldn't detect any text in this image. Could you please provide the event details manually or verify the image contains readable text?"
+            }
+        
+        elif "tesseract" in ocr_result.get("error", "").lower():
+            return {
+                "error": "OCR system not available",
+                "parsing_confidence": 0.0,
+                "parsing_method": "failed_ocr_unavailable",
+                "event_title": "",
+                "event_date": "",
+                "event_location": "",
+                "event_description": "OCR system not configured",
+                "requires_user_input": True,
+                "user_message": "🔧 OCR text extraction is not available on this server. Please provide the event details manually:\n\n📌 **Event Title**: \n📅 **Date & Time**: \n📍 **Location**: \n📝 **Description**: \n\nJust type the details and I'll save them for you!"
             }
         
         else:

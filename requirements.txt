@@ -16,3 +16,5 @@ langsmith
 structlog
 pytesseract
 Pillow
+opencv-python
+numpy
